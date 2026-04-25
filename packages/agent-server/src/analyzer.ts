@@ -65,7 +65,9 @@ interface DedupedCharacter {
 }
 
 interface IdentifiedSubplot {
+  id?: string
   name: string
+  function: 'create-crisis' | 'deliver-payoff' | 'establish-setting' | 'romance' | 'growth' | null
   description: string
   chapters: number[]
 }
@@ -426,13 +428,20 @@ function subplotsPrompt(chapters: { number: number; summary: string; events: str
 要求：
 1. 必须包含主线（最核心的冲突/追求）和若干条清晰的支线
 2. 每条支线列出它明显推进的章节号
-3. description 不超过 100 字
+3. 每条支线必须判定一个 **function**（功能定位），从下面 5 选 1：
+   - create-crisis：制造危机 / 主线威胁
+   - deliver-payoff：兑现爽点 / 打脸 / 反杀
+   - establish-setting：铺设定 / 建立世界观或主角的资源池
+   - romance：感情线
+   - growth：主角成长 / 升级线
+4. description 不超过 100 字
+5. id 必须是 'sp-NNN' 形式（sp-001, sp-002, ...）
 
 严格 JSON 输出：
 
 {
   "subplots": [
-    { "name": "...", "description": "...", "chapters": [1, 3, 5] }
+    { "id": "sp-001", "name": "...", "function": "establish-setting", "description": "...", "chapters": [1, 3, 5] }
   ]
 }
 
