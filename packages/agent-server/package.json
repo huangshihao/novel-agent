@@ -13,12 +13,10 @@
   "dependencies": {
     "@hono/node-server": "^1.13.7",
     "@novel-agent/shared": "workspace:*",
-    "better-sqlite3": "^11.7.0",
     "gray-matter": "^4.0.3",
     "hono": "^4.6.12"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^1.0.4",
     "tsx": "^4.19.2",

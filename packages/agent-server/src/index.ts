@@ -1,6 +1,5 @@
 import { serve } from '@hono/node-server'
 import { app } from './server.js'
-import { closeDb } from './db.js'
 
 const port = Number(process.env['PORT'] ?? 3100)
 
@@ -25,7 +24,6 @@ function shutdown(sig: string) {
   force.unref()
 
   server.close(() => {
-    closeDb()
     process.exit(0)
   })
 }
