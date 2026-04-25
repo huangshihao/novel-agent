@@ -6,6 +6,7 @@
 
 import { readFile } from 'node:fs/promises'
 import { DeepSeekClient, DeepSeekError, pMap } from './deepseek-client.js'
+import { buildSharedLlmClient } from './lib/llm-client.js'
 import { emitAnalysisEvent } from './event-bus.js'
 import { paths } from './storage/paths.js'
 import { writeSourceChapter } from './storage/source-writer.js'
@@ -561,16 +562,6 @@ async function sampleStylePassages(novelId: string, totalChapters: number): Prom
   return samples
 }
 
-function buildClient(): DeepSeekClient {
-  const apiKey = process.env['DEEPSEEK_API_KEY']
-  if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not set')
-  return new DeepSeekClient({
-    apiKey,
-    model: process.env['DEEPSEEK_MODEL'] ?? 'deepseek-chat',
-    baseUrl: process.env['DEEPSEEK_BASE_URL'] ?? 'https://api.deepseek.com/v1',
-  })
-}
-
 async function incAnalyzed(novelId: string, inc: number, total: number): Promise<void> {
   const cur = await readNovelIndex(novelId)
   if (!cur) return
@@ -939,7 +930,7 @@ export function startAnalysis(novelId: string, opts?: StartAnalysisOpts): void {
 }
 
 async function runAnalysis(novelId: string, opts: StartAnalysisOpts): Promise<void> {
-  const client = buildClient()
+  const client = buildSharedLlmClient()
 
   const novel = await readNovelIndex(novelId)
   if (!novel) {
@@ -1024,7 +1015,7 @@ export function reaggregate(novelId: string): void {
   void (async () => {
     const novel = await readNovelIndex(novelId)
     if (!novel) return
-    const client = buildClient()
+    const client = buildSharedLlmClient()
     await updateNovelIndex(novelId, { status: 'analyzing' })
     emitAnalysisEvent(novelId, { type: 'status', status: 'analyzing' })
     try {
