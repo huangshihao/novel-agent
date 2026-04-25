@@ -79,22 +79,24 @@ export function NovelDetailPage() {
               )}`}
           </div>
         </div>
-        {novel.status === 'ready' && (
-          <Link
-            to={`/novels/${id}/rewrite`}
-            className="px-3 py-1 text-xs rounded bg-amber-500 text-white"
-          >
-            去改写 →
-          </Link>
-        )}
-        <span
-          className={cn(
-            'text-xs px-2 py-0.5 rounded-full mt-2',
-            statusStyle[novel.status],
+        <div className="flex items-center gap-2 mt-2">
+          {novel.status === 'ready' && (
+            <Link
+              to={`/novels/${id}/rewrite`}
+              className="px-3 py-1 text-xs rounded bg-amber-500 text-white leading-none"
+            >
+              去改写 →
+            </Link>
           )}
-        >
-          {statusLabel[novel.status]}
-        </span>
+          <span
+            className={cn(
+              'text-xs px-2 py-0.5 rounded-full leading-none',
+              statusStyle[novel.status],
+            )}
+          >
+            {statusLabel[novel.status]}
+          </span>
+        </div>
       </header>
 
       {showTools && <ContinueAnalysisBar novelId={id} canContinue={canContinue} />}
