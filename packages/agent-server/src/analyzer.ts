@@ -11,6 +11,13 @@ import { emitAnalysisEvent } from './event-bus.js'
 import { paths } from './storage/paths.js'
 import { writeSourceChapter } from './storage/source-writer.js'
 import { listSourceChapters } from './storage/source-reader.js'
+import {
+  writeSourceCharacter,
+  writeSourceHooks,
+  writeSourceMeta,
+  writeSourceSubplots,
+} from './storage/source-writer.js'
+import { readNovelIndex } from './storage/novel-index.js'
 
 const BATCH_SIZE = 5
 const MAX_CHAPTER_CHARS = 1500
@@ -532,6 +539,29 @@ function sampleEvenly<T>(arr: T[], k: number): T[] {
   return [...new Set(out)]
 }
 
+async function sampleStylePassages(novelId: string, totalChapters: number): Promise<string[]> {
+  if (totalChapters === 0) return []
+  const k = Math.min(8, Math.max(3, Math.floor(totalChapters / 8)))
+  const indices: number[] = []
+  for (let i = 0; i < k; i++) {
+    const n = Math.max(1, Math.round(((i + 1) * totalChapters) / (k + 1)))
+    if (!indices.includes(n)) indices.push(n)
+  }
+  const samples: string[] = []
+  for (const n of indices) {
+    try {
+      const text = await readFile(paths.sourceRaw(novelId, n), 'utf8')
+      const paras = text.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length >= 50 && p.length <= 600)
+      if (paras.length === 0) continue
+      const pick = paras[Math.floor(paras.length / 2)]!
+      samples.push(pick.slice(0, 400))
+    } catch {
+      /* skip */
+    }
+  }
+  return samples
+}
+
 function buildClient(): DeepSeekClient {
   const apiKey = process.env['DEEPSEEK_API_KEY']
   if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not set')
@@ -679,15 +709,9 @@ function normalizeExtract(raw: Partial<ChapterExtract> & { chapter_id?: unknown 
 async function runPass2(
   client: DeepSeekClient,
   novelId: string,
-  chapters: { id: number; number: number }[],
   extracts: Map<number, ChapterExtract>,
 ): Promise<void> {
-  // Build chapter number → chapter_id lookup
-  const numToId = new Map<number, number>()
-  for (const c of chapters) numToId.set(c.number, c.id)
-
   // ── 2a. 人物聚合 ─────────────────────────────────────────────────────
-  // 每个候选名字 → 它出现在哪些章节 + 这些章节的摘要（用作关系/重要性的证据）
   const nameOccurrences = new Map<string, Set<number>>()
   for (const [num, ex] of extracts) {
     for (const name of ex.characters_present) {
@@ -703,18 +727,16 @@ async function runPass2(
   const rawNames = [...nameOccurrences.keys()]
   let deduped: DedupedCharacter[] = []
   if (rawNames.length > 0) {
-    // 为每个名字构造"证据包"：章节号 + 摘要（关系线索几乎都在摘要里）
-    // 控制 context：每个名字最多 6 条摘要（首次、末次、中间均匀采样）
     const MAX_PER_NAME = 6
     const charsForPrompt = rawNames.map((name) => {
-      const chapters = [...(nameOccurrences.get(name) ?? [])].sort((a, b) => a - b)
-      const picked = sampleEvenly(chapters, MAX_PER_NAME)
+      const chs = [...(nameOccurrences.get(name) ?? [])].sort((a, b) => a - b)
+      const picked = sampleEvenly(chs, MAX_PER_NAME)
       const summaries: { chapter: number; summary: string }[] = []
       for (const n of picked) {
         const ex = extracts.get(n)
         if (ex && ex.summary) summaries.push({ chapter: n, summary: ex.summary })
       }
-      return { name, chapters, summaries }
+      return { name, chapters: chs, summaries }
     })
 
     try {
@@ -724,8 +746,7 @@ async function runPass2(
       )
       deduped = Array.isArray(parsed.characters) ? parsed.characters : []
     } catch (err) {
-      console.warn('[analyzer] character dedupe failed, falling back to raw names:', (err as Error).message)
-      // 失败回退：每个 raw name 就是一个独立 character
+      console.warn('[analyzer] character dedupe failed:', (err as Error).message)
       deduped = rawNames.map((n) => ({
         canonical_name: n,
         aliases: [],
@@ -737,53 +758,31 @@ async function runPass2(
     }
   }
 
-  // 落库
-  const insertChar = db.prepare(
-    `INSERT INTO character (novel_id, name, aliases_json, description, first_chapter, last_chapter)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  )
-  const insertMention = db.prepare(
-    `INSERT OR IGNORE INTO character_mention (character_id, chapter_id) VALUES (?, ?)`,
-  )
-
-  const insertCharsTx = db.transaction(() => {
-    for (const c of deduped) {
-      // 确定该 canonical+别名 在哪些章节出现
-      const allNames = [c.canonical_name, ...c.aliases].filter(Boolean)
-      const appearChapters = new Set<number>()
-      for (const n of allNames) {
-        const chs = nameOccurrences.get(n)
-        if (chs) for (const ch of chs) appearChapters.add(ch)
-      }
-      if (appearChapters.size === 0) continue
-
-      const sorted = [...appearChapters].sort((a, b) => a - b)
-      const info = insertChar.run(
-        novelId,
-        c.canonical_name,
-        JSON.stringify(c.aliases),
-        c.description,
-        sorted[0]!,
-        sorted[sorted.length - 1]!,
-      )
-      const charId = Number(info.lastInsertRowid)
-
-      for (const num of sorted) {
-        const chId = numToId.get(num)
-        if (chId) insertMention.run(charId, chId)
-      }
+  for (const c of deduped) {
+    const allNames = [c.canonical_name, ...c.aliases].filter(Boolean)
+    const appearChapters = new Set<number>()
+    for (const n of allNames) {
+      const chs = nameOccurrences.get(n)
+      if (chs) for (const ch of chs) appearChapters.add(ch)
     }
-  })
-  insertCharsTx()
+    if (appearChapters.size === 0) continue
+    const sorted = [...appearChapters].sort((a, b) => a - b)
+    await writeSourceCharacter(novelId, {
+      canonical_name: c.canonical_name,
+      aliases: c.aliases,
+      role: c.role,
+      function_tags: c.function_tags,
+      first_chapter: sorted[0]!,
+      last_chapter: sorted[sorted.length - 1]!,
+      death_chapter: c.death_chapter,
+      description: c.description,
+    })
+  }
 
   // ── 2b. 支线识别 ─────────────────────────────────────────────────────
   const chapterInputs = [...extracts.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([num, ex]) => ({
-      number: num,
-      summary: ex.summary,
-      events: ex.key_events,
-    }))
+    .map(([num, ex]) => ({ number: num, summary: ex.summary, events: ex.key_events }))
 
   let subplots: IdentifiedSubplot[] = []
   if (chapterInputs.length > 0) {
@@ -799,71 +798,39 @@ async function runPass2(
     }
   }
 
-  const insertSub = db.prepare(
-    `INSERT INTO subplot (novel_id, name, description, start_chapter, end_chapter)
-     VALUES (?, ?, ?, ?, ?)`,
-  )
-  const insertSubCh = db.prepare(
-    `INSERT OR IGNORE INTO subplot_chapter (subplot_id, chapter_id) VALUES (?, ?)`,
+  await writeSourceSubplots(
+    novelId,
+    subplots
+      .map((sp, i) => ({
+        id: sp.id ?? `sp-${String(i + 1).padStart(3, '0')}`,
+        name: String(sp.name ?? '').trim() || '未命名支线',
+        function: sp.function ?? null,
+        description: String(sp.description ?? '').trim(),
+        chapters: Array.isArray(sp.chapters)
+          ? [...new Set(sp.chapters.map(Number).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b)
+          : [],
+      }))
+      .filter((sp) => sp.chapters.length > 0),
   )
 
-  const insertSubsTx = db.transaction(() => {
-    for (const sp of subplots) {
-      const chs = Array.isArray(sp.chapters)
-        ? [...new Set(sp.chapters.map(Number).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b)
-        : []
-      if (chs.length === 0) continue
-      const info = insertSub.run(
-        novelId,
-        String(sp.name ?? '').trim() || '未命名支线',
-        String(sp.description ?? '').trim(),
-        chs[0]!,
-        chs[chs.length - 1]!,
-      )
-      const sid = Number(info.lastInsertRowid)
-      for (const n of chs) {
-        const chId = numToId.get(n)
-        if (chId) insertSubCh.run(sid, chId)
-      }
-    }
-  })
-  insertSubsTx()
-
-  // ── 2c. 钩子：合成 → refine（过滤 + 去重 + 回收匹配） ──────────────
-  const candidates: {
-    desc: string
-    category: string | null
-    chapter: number
-  }[] = []
+  // ── 2c. 钩子（仅长线）：合成 → refine ──────────────
+  const candidates: { desc: string; category: string | null; chapter: number }[] = []
   const paid: { chapter: number; ref_desc: string }[] = []
   for (const [num, ex] of extracts) {
-    for (const h of ex.hooks_planted) {
-      candidates.push({ desc: h.desc, category: h.category, chapter: num })
-    }
-    for (const p of ex.hooks_paid) {
-      paid.push({ chapter: num, ref_desc: p.ref_desc })
-    }
+    for (const h of ex.hooks_planted) candidates.push({ desc: h.desc, category: h.category, chapter: num })
+    for (const p of ex.hooks_paid) paid.push({ chapter: num, ref_desc: p.ref_desc })
   }
 
-  // 2c.1 —— 结构性钩子合成：找跨 3+ 章的伞状悬念
   let structural: RefinedHook[] = []
   if (candidates.length > 0) {
     const summaries = [...extracts.entries()]
       .sort(([a], [b]) => a - b)
       .map(([n, ex]) => ({ chapter: n, summary: ex.summary }))
       .filter((s) => s.summary)
-    const charactersInfo = deduped.map((c) => ({
-      name: c.canonical_name,
-      aliases: c.aliases,
-      description: c.description,
-    }))
+    const charactersInfo = deduped.map((c) => ({ name: c.canonical_name, aliases: c.aliases, description: c.description }))
     try {
       const parsed = await client.chatJson<{ structural_hooks: unknown[] }>(
-        synthesizeStructuralHooksPrompt({
-          candidates,
-          summaries,
-          characters: charactersInfo,
-        }),
+        synthesizeStructuralHooksPrompt({ candidates, summaries, characters: charactersInfo }),
         { temperature: 0.2 },
       )
       structural = normalizeRefinedHooks(parsed.structural_hooks)
@@ -873,7 +840,6 @@ async function runPass2(
     }
   }
 
-  // 2c.2 —— refine pass：保留 structural、过滤+去重 candidates、匹配 payoff
   let refined: RefinedHook[] = []
   if (candidates.length > 0 || structural.length > 0) {
     try {
@@ -883,41 +849,63 @@ async function runPass2(
       )
       refined = normalizeRefinedHooks(parsed.hooks)
     } catch (err) {
-      console.warn('[analyzer] hook refine failed, falling back:', (err as Error).message)
-      // 失败回退：保留 structural + 所有 candidates（按原样）
-      refined = [
-        ...structural,
-        ...candidates.map((c) => ({
-          desc: c.desc,
-          category: (HOOK_CATEGORIES as string[]).includes(c.category ?? '')
-            ? (c.category as HookCategoryCode)
-            : null,
-          planted_chapter: c.chapter,
-          payoff_chapter: null,
-          evidence_chapters: [c.chapter],
-        })),
-      ]
+      console.warn('[analyzer] hook refine failed:', (err as Error).message)
+      refined = [...structural]
     }
   }
 
-  const insertHook = db.prepare(
-    `INSERT INTO hook (novel_id, description, type, category, planted_chapter, payoff_chapter, evidence_chapters_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  await writeSourceHooks(
+    novelId,
+    refined.map((h, i) => ({
+      id: `hk-${String(i + 1).padStart(3, '0')}`,
+      description: h.desc,
+      category: h.category,
+      planted_chapter: h.planted_chapter,
+      payoff_chapter: h.payoff_chapter,
+      evidence_chapters: h.evidence_chapters,
+      why: h.why,
+    })),
   )
-  const insertHooksTx = db.transaction(() => {
-    for (const h of refined) {
-      insertHook.run(
-        novelId,
-        h.desc,
-        'long',
-        h.category,
-        h.planted_chapter,
-        h.payoff_chapter,
-        JSON.stringify(h.evidence_chapters),
-      )
-    }
+
+  // ── 2d. setting/world meta ───────────────────────────────────────────
+  const novel = await readNovelIndex(novelId)
+  const metaInput = {
+    title: novel?.title ?? '',
+    chapter_count: novel?.chapter_count ?? extracts.size,
+    chapters: chapterInputs.map((c) => ({ number: c.number, summary: c.summary })),
+    characters: deduped.map((c) => ({ name: c.canonical_name, description: c.description })),
+  }
+
+  let meta: NovelMetaExtract = {
+    industry: '',
+    era: '',
+    world_rules: [],
+    key_terms: [],
+    genre_tags: [],
+    style_tags: [],
+    summary: '',
+  }
+  try {
+    meta = await client.chatJson<NovelMetaExtract>(metaPrompt(metaInput), { temperature: 0.2 })
+  } catch (err) {
+    console.warn('[analyzer] meta extraction failed:', (err as Error).message)
+  }
+
+  // ── 2e. 风格样本（无 LLM）─────────────────────────────────────────────
+  const styleSamples = await sampleStylePassages(novelId, novel?.chapter_count ?? extracts.size)
+
+  await writeSourceMeta(novelId, {
+    title: novel?.title ?? '',
+    chapter_count: novel?.chapter_count ?? extracts.size,
+    genre_tags: meta.genre_tags,
+    industry: meta.industry,
+    era: meta.era,
+    world_rules: meta.world_rules,
+    key_terms: meta.key_terms,
+    style_tags: meta.style_tags,
+    style_samples: styleSamples,
+    summary: meta.summary,
   })
-  insertHooksTx()
 }
 
 function normalizeRefinedHooks(raw: unknown): RefinedHook[] {
