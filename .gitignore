@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.env
+.env.local
+
+# 本地数据：分析产物 + 改写产物。理由见 spec 第 3 节。
+data/
+!data/.gitkeep
