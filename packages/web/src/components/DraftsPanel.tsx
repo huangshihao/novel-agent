@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
-import { ReviseButton } from './ReviseButton.js'
 import clsx from 'clsx'
 
 interface Props {
@@ -9,7 +8,6 @@ interface Props {
 }
 
 export function DraftsPanel({ novelId }: Props) {
-  const qc = useQueryClient()
   const { data: drafts } = useQuery({
     queryKey: ['drafts', novelId],
     queryFn: () => api.listDrafts(novelId),
@@ -37,15 +35,9 @@ export function DraftsPanel({ novelId }: Props) {
             >
               <button
                 onClick={() => setSelected(d.number)}
-                className="w-full text-left px-3 py-2 text-sm flex items-center justify-between"
+                className="w-full text-left px-3 py-2 text-sm"
               >
-                <span>第 {d.number} 章 <span className="text-xs text-neutral-500">{d.word_count} 字</span></span>
-                <ReviseButton
-                  novelId={novelId}
-                  role="writer"
-                  number={d.number}
-                  onStarted={() => qc.invalidateQueries({ queryKey: ['agent-active', novelId] })}
-                />
+                第 {d.number} 章 <span className="text-xs text-neutral-500">{d.word_count} 字</span>
               </button>
             </li>
           ))}

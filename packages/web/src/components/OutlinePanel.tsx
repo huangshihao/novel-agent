@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
-import { ReviseButton } from './ReviseButton.js'
 import clsx from 'clsx'
 
 interface Props {
@@ -9,7 +8,6 @@ interface Props {
 }
 
 export function OutlinePanel({ novelId }: Props) {
-  const qc = useQueryClient()
   const { data: outlines } = useQuery({
     queryKey: ['outlines', novelId],
     queryFn: () => api.listOutlines(novelId),
@@ -37,15 +35,9 @@ export function OutlinePanel({ novelId }: Props) {
             >
               <button
                 onClick={() => setSelected(o.number)}
-                className="w-full text-left px-3 py-2 text-sm flex items-center justify-between"
+                className="w-full text-left px-3 py-2 text-sm"
               >
-                <span>第 {o.number} 章</span>
-                <ReviseButton
-                  novelId={novelId}
-                  role="outline"
-                  number={o.number}
-                  onStarted={() => qc.invalidateQueries({ queryKey: ['agent-active', novelId] })}
-                />
+                第 {o.number} 章
               </button>
             </li>
           ))}
