@@ -4,17 +4,19 @@ import { buildWriteChapterOutlineTool, type BatchRange } from './write-chapter-o
 import { buildGetChapterContextTool } from './get-chapter-context.js'
 import { buildWriteChapterTool } from './write-chapter.js'
 
-export function buildOutlineAgentTools(novelId: string, batch: BatchRange): ToolDefinition[] {
+/**
+ * Chat agent 一次拿所有 4 个 tool。
+ * scope 给 [1, analyzedTo]，表示 agent 可写任意已分析过的章节。
+ */
+export function buildChatAgentTools(
+  novelId: string,
+  scope: BatchRange,
+): ToolDefinition[] {
   return [
     buildUpdateMapsTool(novelId),
-    buildWriteChapterOutlineTool(novelId, batch),
-  ]
-}
-
-export function buildWriterAgentTools(novelId: string, batch: BatchRange): ToolDefinition[] {
-  return [
+    buildWriteChapterOutlineTool(novelId, scope),
     buildGetChapterContextTool(novelId),
-    buildWriteChapterTool(novelId, batch),
+    buildWriteChapterTool(novelId, scope),
   ]
 }
 
