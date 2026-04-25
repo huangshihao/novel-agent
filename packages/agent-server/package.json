@@ -12,7 +12,11 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
+    "@mariozechner/pi-agent-core": "^0.64.0",
+    "@mariozechner/pi-ai": "^0.64.0",
+    "@mariozechner/pi-coding-agent": "^0.64.0",
     "@novel-agent/shared": "workspace:*",
+    "@sinclair/typebox": "^0.34",
     "gray-matter": "^4.0.3",
     "hono": "^4.6.12"
   },

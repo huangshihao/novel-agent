@@ -28,4 +28,13 @@ export const paths = {
   sourceRawDir: (id: string) => join(root(), id, 'source', 'raw'),
   sourceRaw: (id: string, n: number) =>
     join(root(), id, 'source', 'raw', `${pad4(n)}.txt`),
+  targetDir: (id: string) => join(root(), id, 'target'),
+  targetMaps: (id: string) => join(root(), id, 'target', 'maps.md'),
+  targetState: (id: string) => join(root(), id, 'target', 'state.md'),
+  targetOutlinesDir: (id: string) => join(root(), id, 'target', 'outlines'),
+  targetOutline: (id: string, n: number) =>
+    join(root(), id, 'target', 'outlines', `${pad4(n)}.md`),
+  targetChaptersDir: (id: string) => join(root(), id, 'target', 'chapters'),
+  targetChapter: (id: string, n: number) =>
+    join(root(), id, 'target', 'chapters', `${pad4(n)}.md`),
 }

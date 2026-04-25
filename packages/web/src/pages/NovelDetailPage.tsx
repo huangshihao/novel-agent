@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { HookCategory } from '@novel-agent/shared'
 import { api } from '../lib/api'
 import { cn, statusLabel, statusStyle } from '../lib/ui'
+import { useConfirm } from '../lib/use-confirm'
 
 type Tab = 'chapters' | 'characters' | 'subplots' | 'hooks'
 
@@ -79,14 +80,24 @@ export function NovelDetailPage() {
               )}`}
           </div>
         </div>
-        <span
-          className={cn(
-            'text-xs px-2 py-0.5 rounded-full mt-2',
-            statusStyle[novel.status],
+        <div className="flex items-center gap-2 mt-2">
+          <span
+            className={cn(
+              'text-xs px-2 py-0.5 rounded-full leading-none',
+              statusStyle[novel.status],
+            )}
+          >
+            {statusLabel[novel.status]}
+          </span>
+          {novel.status === 'ready' && (
+            <Link
+              to={`/novels/${id}/rewrite`}
+              className="px-3 py-1 text-xs rounded bg-amber-500 text-white leading-none"
+            >
+              去改写 →
+            </Link>
           )}
-        >
-          {statusLabel[novel.status]}
-        </span>
+        </div>
       </header>
 
       {showTools && <ContinueAnalysisBar novelId={id} canContinue={canContinue} />}
@@ -318,6 +329,7 @@ const HOOK_CATEGORY_META: Record<HookCategory, { label: string; cls: string }> =
 
 function HooksTab({ novelId }: { novelId: string }) {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const { data, isLoading, error } = useQuery({
     queryKey: ['hooks', novelId],
     queryFn: () => api.listHooks(novelId),
@@ -370,8 +382,14 @@ function HooksTab({ novelId }: { novelId: string }) {
               )}
             </div>
             <button
-              onClick={() => {
-                if (confirm('删除这条钩子？')) del.mutate(h.id)
+              onClick={async () => {
+                const ok = await confirm({
+                  title: '删除钩子',
+                  message: '确定删除这条钩子？',
+                  confirmLabel: '删除',
+                  tone: 'danger',
+                })
+                if (ok) del.mutate(h.id)
               }}
               disabled={del.isPending}
               title="删除"
@@ -394,6 +412,7 @@ function ContinueAnalysisBar({
   canContinue: boolean
 }) {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const [more, setMore] = useState(50)
   const [err, setErr] = useState<string | null>(null)
   const cont = useMutation({
@@ -441,13 +460,28 @@ function ContinueAnalysisBar({
       </button>
       <span className="mx-1 h-4 w-px bg-neutral-200" aria-hidden />
       <button
-        onClick={() => {
-          if (
-            confirm(
-              '用已有章节数据重新聚合人物/支线/钩子？\n\n不会重新读取章节原文，只会基于已抽取的摘要/事件/钩子候选：\n• 人物卡：合并别名、过滤工具人、重写描述\n• 支线：重新识别 3-10 条主支线\n• 钩子：重新过滤/去重/匹配回收\n\n速度快、不消耗每章抽取 token。适合调整聚合规则后复验。',
-            )
-          )
-            reagg.mutate()
+        onClick={async () => {
+          const ok = await confirm({
+            title: '重新聚合',
+            confirmLabel: '开始',
+            message: (
+              <div className="space-y-2">
+                <p>用已有章节数据重新聚合人物 / 支线 / 钩子？</p>
+                <p className="text-neutral-600">
+                  不会重新读取章节原文，只会基于已抽取的摘要 / 事件 / 钩子候选：
+                </p>
+                <ul className="list-disc list-inside space-y-0.5 text-neutral-600">
+                  <li>人物卡：合并别名、过滤工具人、重写描述</li>
+                  <li>支线：重新识别 3-10 条主支线</li>
+                  <li>钩子：重新过滤 / 去重 / 匹配回收</li>
+                </ul>
+                <p className="text-neutral-500 text-xs">
+                  速度快、不消耗每章抽取 token。适合调整聚合规则后复验。
+                </p>
+              </div>
+            ),
+          })
+          if (ok) reagg.mutate()
         }}
         disabled={busy}
         title={

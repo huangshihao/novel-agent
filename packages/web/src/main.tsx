@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { App } from './App'
 import { NovelListPage } from './pages/NovelListPage'
 import { NovelDetailPage } from './pages/NovelDetailPage'
+import { RewritePage } from './pages/RewritePage'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -23,6 +24,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <NovelListPage /> },
       { path: 'novels/:id', element: <NovelDetailPage /> },
+      { path: 'novels/:id/rewrite', element: <RewritePage /> },
     ],
   },
 ])

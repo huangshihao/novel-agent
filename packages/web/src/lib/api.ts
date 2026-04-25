@@ -4,6 +4,11 @@ import type {
   Character,
   Subplot,
   Hook,
+  MapsRecord,
+  OutlineRecord,
+  ChapterDraftRecord,
+  ChapterDraftSummary,
+  StateRecord,
 } from '@novel-agent/shared'
 
 export type ChapterListItem = Pick<Chapter, 'id' | 'novel_id' | 'number' | 'title' | 'summary'>
@@ -54,4 +59,16 @@ export const api = {
   listHooks: (id: string) => fetch(`/api/novel/${id}/hooks`).then(j<Hook[]>),
   deleteHook: (novelId: string, hookId: number) =>
     fetch(`/api/novel/${novelId}/hooks/${hookId}`, { method: 'DELETE' }),
+  getMaps: (id: string) =>
+    fetch(`/api/novel/${id}/maps`).then(j<MapsRecord | null>),
+  listOutlines: (id: string) =>
+    fetch(`/api/novel/${id}/outlines`).then(j<OutlineRecord[]>),
+  getOutline: (id: string, n: number) =>
+    fetch(`/api/novel/${id}/outlines/${n}`).then(j<OutlineRecord>),
+  listDrafts: (id: string) =>
+    fetch(`/api/novel/${id}/drafts`).then(j<ChapterDraftSummary[]>),
+  getDraft: (id: string, n: number) =>
+    fetch(`/api/novel/${id}/drafts/${n}`).then(j<ChapterDraftRecord>),
+  getState: (id: string) =>
+    fetch(`/api/novel/${id}/state`).then(j<StateRecord | null>),
 }
