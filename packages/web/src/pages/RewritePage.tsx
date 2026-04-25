@@ -1,50 +1,38 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
 import { agentApi } from '../lib/agent-api.js'
+import { useActiveTask } from '../lib/use-active-task.js'
 import { MapsPanel } from '../components/MapsPanel.js'
 import { OutlinePanel } from '../components/OutlinePanel.js'
 import { DraftsPanel } from '../components/DraftsPanel.js'
 import { StatePanel } from '../components/StatePanel.js'
 import { AgentChat } from '../components/AgentChat.js'
+import { BatchJobPanel } from '../components/BatchJobPanel.js'
 import clsx from 'clsx'
 
 type Tab = 'maps' | 'outlines' | 'drafts'
 
 export function RewritePage() {
   const { id = '' } = useParams<{ id: string }>()
+  const qc = useQueryClient()
   const { data: novel } = useQuery({
     queryKey: ['novel', id],
     queryFn: () => api.getNovel(id),
   })
+  const { data: active } = useActiveTask(id)
   const [tab, setTab] = useState<Tab>('maps')
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [batch, setBatch] = useState<{ from: number; to: number }>({ from: 1, to: 1 })
-  const [batchInitialized, setBatchInitialized] = useState(false)
-
-  useEffect(() => {
-    if (batchInitialized || !novel || novel.analyzed_to < 1) return
-    setBatch({ from: 1, to: Math.min(novel.analyzed_to, 10) })
-    setBatchInitialized(true)
-  }, [batchInitialized, novel])
 
   if (!novel) return <p className="text-sm text-neutral-400">加载中...</p>
 
   const maxChapter = novel.analyzed_to
-  const hasAnalyzed = maxChapter >= 1
-  const rangeValid =
-    hasAnalyzed &&
-    batch.from >= 1 &&
-    batch.to >= batch.from &&
-    batch.to <= maxChapter
 
-  const startSession = async (role: 'outline' | 'writer') => {
-    if (!rangeValid) return
-    const resp = role === 'outline'
-      ? await agentApi.startOutline(id, batch.from, batch.to)
-      : await agentApi.startWriter(id, batch.from, batch.to)
-    setSessionId(resp.id)
+  const closeActive = async () => {
+    if (!active) return
+    if (active.kind === 'session') await agentApi.closeSession(active.session.id)
+    else await agentApi.closeJob(active.batch.id)
+    qc.invalidateQueries({ queryKey: ['agent-active', id] })
   }
 
   return (
@@ -54,47 +42,19 @@ export function RewritePage() {
           ← {novel.title}
         </Link>
         <div className="flex-1" />
-
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-neutral-500">
-            {hasAnalyzed ? `已分析 1-${maxChapter} 章，本批` : '尚未分析任何章节'}
-          </span>
-          <input
-            type="number"
-            value={batch.from}
-            min={1}
-            max={maxChapter || 1}
-            disabled={!hasAnalyzed}
-            onChange={(e) => setBatch((b) => ({ ...b, from: Number(e.target.value) }))}
-            className="w-16 px-2 py-1 border border-neutral-300 rounded disabled:bg-neutral-100"
-          />
-          <span>—</span>
-          <input
-            type="number"
-            value={batch.to}
-            min={1}
-            max={maxChapter || 1}
-            disabled={!hasAnalyzed}
-            onChange={(e) => setBatch((b) => ({ ...b, to: Number(e.target.value) }))}
-            className="w-16 px-2 py-1 border border-neutral-300 rounded disabled:bg-neutral-100"
-          />
-          <button
-            onClick={() => startSession('outline')}
-            disabled={!rangeValid}
-            title={!rangeValid ? '请选 1-' + maxChapter + ' 范围内的有效区间' : ''}
-            className="px-3 py-1 rounded bg-amber-500 text-white text-xs disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            启动大纲 agent
-          </button>
-          <button
-            onClick={() => startSession('writer')}
-            disabled={!rangeValid}
-            title={!rangeValid ? '请选 1-' + maxChapter + ' 范围内的有效区间' : ''}
-            className="px-3 py-1 rounded bg-emerald-500 text-white text-xs disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            启动写作 agent
-          </button>
-        </div>
+        {active && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800">
+              {active.kind === 'session' ? sessionLabel(active.session) : batchLabel(active.batch)}
+            </span>
+            <button
+              onClick={closeActive}
+              className="px-2 py-0.5 rounded border border-neutral-300 hover:bg-neutral-50"
+            >
+              结束
+            </button>
+          </div>
+        )}
       </header>
 
       <div className="flex-1 flex overflow-hidden">
@@ -123,8 +83,8 @@ export function RewritePage() {
           </nav>
           <div className="flex-1 overflow-hidden">
             {tab === 'maps' && <MapsPanel novelId={id} />}
-            {tab === 'outlines' && <OutlinePanel novelId={id} />}
-            {tab === 'drafts' && <DraftsPanel novelId={id} />}
+            {tab === 'outlines' && <OutlinePanel novelId={id} maxChapter={maxChapter} />}
+            {tab === 'drafts' && <DraftsPanel novelId={id} maxChapter={maxChapter} />}
           </div>
         </main>
 
@@ -133,10 +93,37 @@ export function RewritePage() {
             <StatePanel novelId={id} />
           </div>
           <div className="flex-1 overflow-hidden">
-            <AgentChat sessionId={sessionId} onClosed={() => setSessionId(null)} />
+            {!active && (
+              <div className="flex items-center justify-center h-full text-sm text-neutral-400 p-4 text-center">
+                无活跃任务。在大纲 / 正文 tab 启动批量生成或单章修改。
+              </div>
+            )}
+            {active?.kind === 'session' && (
+              <AgentChat
+                session={active.session}
+                onClosed={() => qc.invalidateQueries({ queryKey: ['agent-active', id] })}
+              />
+            )}
+            {active?.kind === 'batch' && (
+              <BatchJobPanel
+                jobId={active.batch.id}
+                onClosed={() => qc.invalidateQueries({ queryKey: ['agent-active', id] })}
+              />
+            )}
           </div>
         </aside>
       </div>
     </div>
   )
+}
+
+function sessionLabel(s: { role: string; mode: string; scope: { from: number; to: number } }): string {
+  const role = s.role === 'outline' ? '大纲' : '正文'
+  const mode = s.mode === 'generate' ? '生成' : '修改'
+  if (s.scope.from === s.scope.to) return `${mode}${role} 第 ${s.scope.from} 章`
+  return `${mode}${role} ${s.scope.from}-${s.scope.to}`
+}
+
+function batchLabel(b: { chapters: number[]; completed: number[]; status: string }): string {
+  return `批量正文 ${b.completed.length}/${b.chapters.length}（${b.status}）`
 }
