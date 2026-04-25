@@ -42,18 +42,17 @@ interface ChapterExtract {
   summary: string
   characters_present: string[]
   key_events: string[]
-  hooks_planted: { desc: string; type: 'short' | 'long'; category: HookCategoryCode | null }[]
+  hooks_planted: { desc: string; category: HookCategoryCode | null }[]
   hooks_paid: { ref_desc: string }[]
 }
 
 interface RefinedHook {
   desc: string
-  type: 'short' | 'long'
   category: HookCategoryCode | null
   planted_chapter: number
   payoff_chapter: number | null
-  /** 单章钩子是 [planted_chapter]，结构性钩子是串起的多个章号 */
   evidence_chapters: number[]
+  why?: string
 }
 
 interface DedupedCharacter {
@@ -81,18 +80,20 @@ function extractPrompt(
 
 ─── 钩子（hooks_planted）的严格定义 ───
 
-钩子是指**让读者"还想继续读下去"的欠账**：此时此刻读者还不知道答案、还不确定结局、情绪还没被释放。
+钩子是指**让读者"还想继续读下去"的长线欠账**：此时此刻读者还不知道答案、还不确定结局，且预计**几十章之后**才会回收。
+**短线钩子（10-20 章内即回收）一律不抽**。本管线只关心长线/结构性钩子。
+
 钩子必须属于以下 9 类之一（输出时 category 填英文 code）：
 
-- suspense（悬念）：读者想知道"接下来会发生什么 / 真相是什么 / 这个人是谁 / 为什么会这样"
-- crisis（危机）：角色面临危险/惩罚/失败/暴露/失去资源，读者想知道能否化解
-- payoff（爽点兑现）：前文造了压迫/羞辱/误解/轻视/资源缺口，读者期待后续打脸/反杀/逆袭/升级
-- goal（目标）：主角有明确的、尚未完成的追求（赚钱/复仇/升级/夺宝/救人）
-- secret（身份/秘密）：角色藏了身份/过去/能力/系统/血脉/关系，等待揭开或误会反转
-- relation（关系）：角色间的感情/仇恨/误会/背叛/暧昧/利益绑定尚未解决
-- rule（规则/设定）：出现新系统/新能力/新世界规则/新副本/新限制，读者想知道规则怎么跑
+- suspense（悬念）：跨多章的"真相是什么 / 这个人是谁 / 为什么会这样"
+- crisis（危机）：跨多章未化解的危险/惩罚/失败/暴露
+- payoff（爽点兑现）：跨多章累积的压迫/羞辱/误解/轻视，等待远期打脸/反杀/逆袭
+- goal（目标）：主角**长期**未完成的追求（赚钱/复仇/升级/夺宝/救人）
+- secret（身份/秘密）：角色藏的身份/过去/能力/系统/血脉/关系
+- relation（关系）：跨多章未解的感情/仇恨/误会/背叛/暧昧/利益绑定
+- rule（规则/设定）：新系统/新世界规则/新副本/新限制
 - contrast（反差）：表面身份 vs 真实能力、当下评价 vs 未来结果，等待反差被揭
-- emotion（情绪欠账）：读者已被激起愤怒/委屈/期待/恐惧，但情绪尚未释放
+- emotion（情绪欠账）：跨多章未释放的愤怒/委屈/期待/恐惧
 
 ─── 钩子的四步自检 ───
 
@@ -125,9 +126,9 @@ function extractPrompt(
 
 ─── 数量校准 ───
 
-- 每 10 章平均 **1-2 条**真钩子，典型一章**产生 0 条**，不是 1-3 条
-- 一章里**冒不出合格钩子是正常的** —— 就输出空数组
-- 如果你一章写出 3+ 条，基本可以判定是在凑数，请删掉
+- 每 10 章平均 **0-1 条**真长线钩子，典型一章**产生 0 条**
+- 一章里**冒不出合格长线钩子是常态**——就输出空数组
+- 如果你一章写出 2+ 条长线，基本可以判定是在凑数，请删掉
 
 ─── 正反例 ───
 
@@ -147,10 +148,10 @@ function extractPrompt(
 1. summary: 100-200 字详细摘要，含主要事件与关键人物的具体行动
 2. characters_present: 本章有名有姓、有台词或行动的角色（路人不算）
 3. key_events: 本章关键事件列表，每条 15-30 字，必须是具体动作
-4. hooks_planted: **符合上述定义**、**本章首次或有增量**的钩子。每条 {desc, type, category}。
-   - type = 'short'（预计 10-20 章内回收）或 'long'（几十章后才回收）
+4. hooks_planted: **符合上述长线定义**、**本章首次或有增量**的钩子。每条 {desc, category}。
+   - **只抽长线**：本章 10-20 章内会回收的小悬念**不要**抽
    - category = 上述 9 种之一的英文 code
-   - **宁可少不要多**；本章若无真正的新钩子，就输出空数组 []
+   - **宁可少不要多**；本章若无真正的新长线钩子，就输出空数组 []
 5. hooks_paid: 本章明显回收了前文某钩子，每条 {ref_desc}（被回收钩子的简要描述）
 
 严格 JSON 输出，不要任何额外文字：
@@ -162,7 +163,7 @@ function extractPrompt(
       "summary": "...",
       "characters_present": ["..."],
       "key_events": ["..."],
-      "hooks_planted": [{"desc": "...", "type": "short", "category": "suspense"}],
+      "hooks_planted": [{"desc": "...", "category": "suspense"}],
       "hooks_paid": [{"ref_desc": "..."}]
     }
   ]
@@ -175,7 +176,7 @@ ${block}
 }
 
 function synthesizeStructuralHooksPrompt(input: {
-  candidates: { desc: string; type: 'short' | 'long'; category: string | null; chapter: number }[]
+  candidates: { desc: string; category: string | null; chapter: number }[]
   summaries: { chapter: number; summary: string }[]
   characters: { name: string; aliases: string[]; description: string }[]
 }): string {
@@ -235,7 +236,6 @@ function synthesizeStructuralHooksPrompt(input: {
     {
       "desc": "...",
       "category": "suspense|crisis|payoff|goal|secret|relation|rule|contrast|emotion",
-      "type": "short|long",
       "planted_chapter": <最早证据章号>,
       "evidence_chapters": [<章号数组>],
       "why": "20字内：列出几个关键证据"
@@ -257,7 +257,7 @@ ${JSON.stringify(input.candidates, null, 2)}
 }
 
 function refineHooksPrompt(input: {
-  candidates: { desc: string; type: 'short' | 'long'; category: string | null; chapter: number }[]
+  candidates: { desc: string; category: string | null; chapter: number }[]
   paid: { chapter: number; ref_desc: string }[]
   structural: RefinedHook[]
 }): string {
@@ -308,8 +308,7 @@ function refineHooksPrompt(input: {
 3. **去重**：剩下的 candidates 如果语义重复，合并为一条
 4. **回收匹配**：对每条保留下来的钩子（structural + 单章幸存），检查 paid 列表或靠后章节是否回收——是则填 payoff_chapter
 5. **分类校正**：9 种之一 — suspense / crisis / payoff / goal / secret / relation / rule / contrast / emotion
-6. **type**：'short'（10-20 章内回收）/ 'long'（几十章后）
-7. **evidence_chapters**：structural 保持其原 evidence；单章钩子填 [planted_chapter]
+6. **evidence_chapters**：structural 保持其原 evidence；单章钩子填 [planted_chapter]
 
 ═══════════════════════════════════════
 数量参考
@@ -332,7 +331,6 @@ function refineHooksPrompt(input: {
   "hooks": [
     {
       "desc": "...",
-      "type": "short|long",
       "category": "suspense|crisis|payoff|goal|secret|relation|rule|contrast|emotion",
       "planted_chapter": <int>,
       "payoff_chapter": <int|null>,
@@ -576,10 +574,6 @@ function normalizeExtract(raw: Partial<ChapterExtract> & { chapter_id?: unknown 
               : null
             return {
               desc: String((h as { desc?: unknown })?.desc ?? '').trim(),
-              type:
-                (h as { type?: unknown })?.type === 'long'
-                  ? ('long' as const)
-                  : ('short' as const),
               category,
             }
           })
@@ -746,14 +740,13 @@ async function runPass2(
   // ── 2c. 钩子：合成 → refine（过滤 + 去重 + 回收匹配） ──────────────
   const candidates: {
     desc: string
-    type: 'short' | 'long'
     category: string | null
     chapter: number
   }[] = []
   const paid: { chapter: number; ref_desc: string }[] = []
   for (const [num, ex] of extracts) {
     for (const h of ex.hooks_planted) {
-      candidates.push({ desc: h.desc, type: h.type, category: h.category, chapter: num })
+      candidates.push({ desc: h.desc, category: h.category, chapter: num })
     }
     for (const p of ex.hooks_paid) {
       paid.push({ chapter: num, ref_desc: p.ref_desc })
@@ -804,7 +797,6 @@ async function runPass2(
         ...structural,
         ...candidates.map((c) => ({
           desc: c.desc,
-          type: c.type,
           category: (HOOK_CATEGORIES as string[]).includes(c.category ?? '')
             ? (c.category as HookCategoryCode)
             : null,
@@ -825,7 +817,7 @@ async function runPass2(
       insertHook.run(
         novelId,
         h.desc,
-        h.type,
+        'long',
         h.category,
         h.planted_chapter,
         h.payoff_chapter,
@@ -860,16 +852,14 @@ function normalizeRefinedHooks(raw: unknown): RefinedHook[] {
         : []
       const plantedChapter = Number.isFinite(planted) && planted > 0 ? planted : evidence[0] ?? 0
       const finalEvidence = evidence.length > 0 ? evidence : plantedChapter > 0 ? [plantedChapter] : []
+      const why = String((h as { why?: unknown })?.why ?? '').trim() || undefined
       return {
         desc: String((h as { desc?: unknown })?.desc ?? '').trim(),
-        type:
-          (h as { type?: unknown })?.type === 'long'
-            ? ('long' as const)
-            : ('short' as const),
         category,
         planted_chapter: plantedChapter,
         payoff_chapter: payoff,
         evidence_chapters: finalEvidence,
+        why,
       }
     })
     .filter((h) => h.desc && h.planted_chapter > 0)
