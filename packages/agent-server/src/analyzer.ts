@@ -5,8 +5,12 @@
 // 外部入口：startAnalysis(novelId) —— 异步起飞，通过 event-bus 广播进度。
 
 import { db } from './db.js'
+import { readFile } from 'node:fs/promises'
 import { DeepSeekClient, DeepSeekError, pMap } from './deepseek-client.js'
 import { emitAnalysisEvent } from './event-bus.js'
+import { paths } from './storage/paths.js'
+import { writeSourceChapter } from './storage/source-writer.js'
+import { listSourceChapters } from './storage/source-reader.js'
 
 const BATCH_SIZE = 5
 const MAX_CHAPTER_CHARS = 1500
@@ -573,14 +577,20 @@ function incAnalyzed(novelId: string, inc: number, total: number): number {
 async function runPass1(
   client: DeepSeekClient,
   novelId: string,
-  chapters: { id: number; number: number; title: string; content: string }[],
+  chapters: { number: number; title: string; rawPath: string }[],
   concurrency: number,
   total: number,
 ): Promise<Map<number, ChapterExtract>> {
-  // number → extract
   const results = new Map<number, ChapterExtract>()
 
-  const batches = chunk(chapters, BATCH_SIZE)
+  const withContent = await Promise.all(
+    chapters.map(async (c) => ({
+      ...c,
+      content: await readFile(c.rawPath, 'utf8'),
+    })),
+  )
+
+  const batches = chunk(withContent, BATCH_SIZE)
 
   await pMap(batches, concurrency, async (batch) => {
     let extracts: ChapterExtract[] = []
@@ -592,7 +602,6 @@ async function runPass1(
       extracts = Array.isArray(parsed.chapters) ? parsed.chapters : []
     } catch (err) {
       console.warn(`[analyzer] extract batch failed:`, (err as Error).message)
-      // 留空，本 batch 的章节将没有 extract，summary 保持 NULL
     }
 
     const byNum = new Map<number, ChapterExtract>()
@@ -601,43 +610,31 @@ async function runPass1(
       if (cid) byNum.set(cid, normalizeExtract(e))
     }
 
-    const updateChapter = db.prepare(
-      `UPDATE chapter SET summary = ? WHERE id = ?`,
-    )
-    const upsertExtract = db.prepare(
-      `INSERT INTO chapter_extract (chapter_id, characters_json, events_json, hooks_planted_json, hooks_paid_json)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(chapter_id) DO UPDATE SET
-         characters_json = excluded.characters_json,
-         events_json = excluded.events_json,
-         hooks_planted_json = excluded.hooks_planted_json,
-         hooks_paid_json = excluded.hooks_paid_json`,
-    )
+    for (const c of batch) {
+      const e = byNum.get(c.number)
+      if (!e) continue
+      await writeSourceChapter(novelId, {
+        number: c.number,
+        title: c.title,
+        characters_present: e.characters_present,
+        hooks_planted: [],
+        hooks_paid: e.hooks_paid.map((p) => p.ref_desc),
+        hooks_planted_candidates: e.hooks_planted.map((h) => ({
+          desc: h.desc,
+          category: h.category,
+        })),
+        summary: e.summary,
+        key_events: e.key_events,
+      })
+      results.set(c.number, e)
+      emitAnalysisEvent(novelId, {
+        type: 'analyze.chapter',
+        number: c.number,
+        title: c.title,
+      })
+    }
 
-    const tx = db.transaction(() => {
-      for (const c of batch) {
-        const e = byNum.get(c.number)
-        if (e) {
-          updateChapter.run(e.summary, c.id)
-          upsertExtract.run(
-            c.id,
-            JSON.stringify(e.characters_present),
-            JSON.stringify(e.key_events),
-            JSON.stringify(e.hooks_planted),
-            JSON.stringify(e.hooks_paid),
-          )
-          results.set(c.number, e)
-          emitAnalysisEvent(novelId, {
-            type: 'analyze.chapter',
-            number: c.number,
-            title: c.title,
-          })
-        }
-      }
-    })
-    tx()
-
-    incAnalyzed(novelId, batch.length, total)
+    await incAnalyzed(novelId, batch.length, total)
   })
 
   return results
