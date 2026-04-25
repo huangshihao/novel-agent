@@ -51,4 +51,8 @@ export const paths = {
   targetChaptersDir: (id: string) => join(root(), id, 'target', 'chapters'),
   targetChapter: (id: string, n: number) =>
     join(root(), id, 'target', 'chapters', `${pad4(n)}.md`),
+  chatsDir: (id: string) => join(root(), id, 'chats'),
+  chatsIndex: (id: string) => join(root(), id, 'chats', 'index.md'),
+  chatSession: (novelId: string, chatId: string) =>
+    join(root(), novelId, 'chats', `${chatId}.jsonl`),
 }
