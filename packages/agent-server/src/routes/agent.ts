@@ -438,13 +438,34 @@ function pipeWorkerEventsToJob(
 }
 
 function waitForAgentEnd(session: AgentSession): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (err?: Error) => {
+      if (settled) return
+      settled = true
+      try { unsub() } catch { /* ignore */ }
+      clearTimeout(timer)
+      if (err) reject(err)
+      else resolve()
+    }
     const unsub = session.subscribe((evt) => {
       if (evt.type === 'agent_end') {
-        unsub()
-        resolve()
+        finish()
+        return
+      }
+      // SDK error events — settle so the worker loop can transition to paused
+      // Different SDK versions name this differently; cover the obvious shapes.
+      const t = (evt as { type?: string }).type
+      if (t === 'error' || t === 'agent_error') {
+        const msg = (evt as { error?: { message?: string }; message?: string }).error?.message
+          ?? (evt as { message?: string }).message
+          ?? `agent error: ${t}`
+        finish(new Error(msg))
       }
     })
+    const timer = setTimeout(() => {
+      finish(new Error('waitForAgentEnd timeout (15 min)'))
+    }, 15 * 60 * 1000)
   })
 }
 

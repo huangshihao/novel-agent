@@ -31,6 +31,8 @@ export interface BatchJob {
   status: BatchJobStatus
   error?: string
   createdAt: number
+  /** internal: true while a runBatchJob loop is actively iterating; prevents concurrent re-entry */
+  _runnerActive: boolean
   emit(event: AgentEvent): void
   subscribe(listener: (event: AgentEvent) => void): () => void
   toInfo(): BatchJobInfo
@@ -55,6 +57,7 @@ export function createBatchJob(input: CreateBatchJobInput): BatchJob {
     current: null,
     status: 'running',
     createdAt: Date.now(),
+    _runnerActive: false,
     emit(event) {
       buffer.push(event)
       for (const fn of listeners) {
@@ -98,47 +101,53 @@ export async function runBatchJob(
   job: BatchJob,
   factory: WorkerFactory,
 ): Promise<void> {
-  while (job.cursor < job.chapters.length) {
-    if (job.status === 'aborted') break
-    if (job.status === 'paused') return
-    const n = job.chapters[job.cursor]!
-    job.current = n
-    job.emit({ type: 'batch.worker_start', chapter: n })
-    try {
-      const handle = await factory({
-        novelId: job.novelId,
-        chapter: n,
-        requirement: job.requirement,
-        emit: job.emit,
-      })
+  if (job._runnerActive) return  // single-flight guard
+  job._runnerActive = true
+  try {
+    while (job.cursor < job.chapters.length) {
+      if (job.status === 'aborted') break
+      if (job.status === 'paused') return
+      const n = job.chapters[job.cursor]!
+      job.current = n
+      job.emit({ type: 'batch.worker_start', chapter: n })
       try {
-        // factory is responsible for sending message + waiting for agent_end + emitting forwarded events
-        // by the time we reach here, the worker turn is complete
-      } finally {
-        try { handle.dispose() } catch { /* ignore */ }
+        const handle = await factory({
+          novelId: job.novelId,
+          chapter: n,
+          requirement: job.requirement,
+          emit: job.emit,
+        })
+        try {
+          // factory is responsible for sending message + waiting for agent_end + emitting forwarded events
+          // by the time we reach here, the worker turn is complete
+        } finally {
+          try { handle.dispose() } catch { /* ignore */ }
+        }
+        job.completed.push(n)
+        job.cursor += 1
+        job.emit({ type: 'batch.worker_end', chapter: n, ok: true })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        job.error = msg
+        job.status = 'paused'
+        job.emit({ type: 'batch.worker_end', chapter: n, ok: false, error: msg })
+        job.emit({ type: 'batch.paused', chapter: n, error: msg })
+        job.current = null
+        return
       }
-      job.completed.push(n)
-      job.cursor += 1
-      job.emit({ type: 'batch.worker_end', chapter: n, ok: true })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      job.error = msg
-      job.status = 'paused'
-      job.emit({ type: 'batch.worker_end', chapter: n, ok: false, error: msg })
-      job.emit({ type: 'batch.paused', chapter: n, error: msg })
-      job.current = null
-      return
+      job.emit({
+        type: 'batch.progress',
+        completed: job.completed.length,
+        total: job.chapters.length,
+        current: job.current,
+      })
     }
-    job.emit({
-      type: 'batch.progress',
-      completed: job.completed.length,
-      total: job.chapters.length,
-      current: job.current,
-    })
-  }
-  if (job.status === 'running') {
-    job.status = 'done'
-    job.current = null
-    job.emit({ type: 'batch.done' })
+    if (job.status === 'running') {
+      job.status = 'done'
+      job.current = null
+      job.emit({ type: 'batch.done' })
+    }
+  } finally {
+    job._runnerActive = false
   }
 }

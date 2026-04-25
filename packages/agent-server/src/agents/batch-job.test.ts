@@ -122,4 +122,19 @@ describe('BatchJob', () => {
     expect(info.completed).toEqual([1, 2])
     expect(info.requirement).toBe('X')
   })
+
+  it('runBatchJob guards against concurrent re-entry', async () => {
+    const job = createBatchJob({
+      novelId: 'n1',
+      requirement: '',
+      chapters: [1, 2],
+    })
+    const factory = fakeFactory({ delayMs: 50 })
+    // start two concurrently
+    const p1 = runBatchJob(job, factory)
+    const p2 = runBatchJob(job, factory)  // should immediately return (guarded)
+    await Promise.all([p1, p2])
+    expect(job.status).toBe('done')
+    expect(job.completed).toEqual([1, 2])  // not [1,2,1,2] — no double-processing
+  })
 })
