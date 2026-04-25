@@ -1,39 +1,56 @@
 import { Hono } from 'hono'
 import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import type { AnalysisEvent } from '@novel-agent/shared'
-import { db } from '../db.js'
 import { splitChapters } from '../chapter-splitter.js'
 import { startAnalysis, reaggregate } from '../analyzer.js'
 import { getBus } from '../event-bus.js'
+import {
+  listNovelIndices,
+  readNovelIndex,
+  writeNovelIndex,
+  updateNovelIndex,
+} from '../storage/novel-index.js'
+import {
+  listSourceChapters,
+  readSourceChapter,
+  listSourceCharacters,
+  readSourceSubplots,
+  readSourceHooks,
+} from '../storage/source-reader.js'
+import { paths } from '../storage/paths.js'
 
 const app = new Hono()
 
-// ─── List / detail ─────────────────────────────────────────────────────────
+// ─── List / detail / delete ─────────────────────────────────────────────
 
-const NOVEL_COLS = `id, title, status, chapter_count, analyzed_count,
-  analysis_from, analysis_to, analyzed_to, error, created_at, updated_at`
-
-app.get('/', (c) => {
-  const rows = db
-    .prepare(`SELECT ${NOVEL_COLS} FROM novel ORDER BY created_at DESC`)
-    .all()
-  return c.json(rows)
+app.get('/', async (c) => {
+  const novels = await listNovelIndices()
+  novels.sort((a, b) => b.created_at - a.created_at)
+  return c.json(novels)
 })
 
-app.get('/:id', (c) => {
-  const row = db
-    .prepare(`SELECT ${NOVEL_COLS} FROM novel WHERE id = ?`)
-    .get(c.req.param('id'))
-  if (!row) return c.json({ error: 'not_found' }, 404)
-  return c.json(row)
+app.get('/:id', async (c) => {
+  const novel = await readNovelIndex(c.req.param('id'))
+  if (!novel) return c.json({ error: 'not_found' }, 404)
+  return c.json(novel)
 })
 
-app.delete('/:id', (c) => {
-  db.prepare(`DELETE FROM novel WHERE id = ?`).run(c.req.param('id'))
+app.delete('/:id', async (c) => {
+  const id = c.req.param('id')
+  await rm(paths.novel(id), { recursive: true, force: true })
   return c.body(null, 204)
 })
 
-// ─── Upload ────────────────────────────────────────────────────────────────
+// ─── Upload ──────────────────────────────────────────────────────────────
+
+function parseIntField(v: unknown, fallback: number): number {
+  if (typeof v === 'string') {
+    const n = parseInt(v, 10)
+    return Number.isFinite(n) ? n : fallback
+  }
+  return fallback
+}
 
 app.post('/', async (c) => {
   const form = await c.req.parseBody()
@@ -48,19 +65,12 @@ app.post('/', async (c) => {
   const chapters = splitChapters(text)
   if (chapters.length === 0) {
     return c.json(
-      {
-        error: 'no_chapters_detected',
-        message: '未能识别到任何章节。目前仅支持"第X章"格式的中文小说。',
-      },
+      { error: 'no_chapters_detected', message: '未能识别到任何章节。目前仅支持"第X章"格式的中文小说。' },
       400,
     )
   }
 
-  // 新接口：前端传 chapter_count（本次要分析多少章）。兼容旧的 analysis_to。
-  const requestedCount = parseIntField(
-    form['chapter_count'] ?? form['analysis_to'],
-    100,
-  )
+  const requestedCount = parseIntField(form['chapter_count'] ?? form['analysis_to'], 100)
   if (requestedCount < 1) {
     return c.json({ error: 'invalid_range', message: '分析章数必须 ≥ 1' }, 400)
   }
@@ -68,338 +78,192 @@ app.post('/', async (c) => {
   const from = 1
 
   const id = `nv-${randomUUID().slice(0, 8)}`
-  const title =
-    providedTitle || file.name.replace(/\.(txt|TXT)$/, '').trim() || '未命名小说'
+  const title = providedTitle || file.name.replace(/\.(txt|TXT)$/, '').trim() || '未命名小说'
   const now = Date.now()
 
-  const tx = db.transaction(() => {
-    db.prepare(
-      `INSERT INTO novel
-       (id, title, status, chapter_count, analyzed_count, analysis_from, analysis_to, analyzed_to, created_at, updated_at)
-       VALUES (?, ?, 'splitting', ?, 0, ?, ?, 0, ?, ?)`,
-    ).run(id, title, chapters.length, from, to, now, now)
+  await mkdir(paths.sourceRawDir(id), { recursive: true })
+  for (const ch of chapters) {
+    await writeFile(paths.sourceRaw(id, ch.number), ch.content, 'utf8')
+  }
 
-    const ins = db.prepare(
-      `INSERT INTO chapter (novel_id, number, title, original_text) VALUES (?, ?, ?, ?)`,
-    )
-    for (const c of chapters) {
-      ins.run(id, c.number, c.title, c.content)
-    }
+  await writeNovelIndex({
+    id,
+    title,
+    status: 'splitting',
+    chapter_count: chapters.length,
+    analyzed_count: 0,
+    analysis_from: from,
+    analysis_to: to,
+    analyzed_to: 0,
+    error: null,
+    created_at: now,
+    updated_at: now,
   })
-  tx()
 
-  startAnalysis(id)
+  startAnalysis(id, { from, to })
+  return c.json(await readNovelIndex(id))
+})
 
+// ─── Chapters ────────────────────────────────────────────────────────────
+
+app.get('/:id/chapters', async (c) => {
+  const id = c.req.param('id')
+  const list = await listSourceChapters(id)
   return c.json(
-    {
-      id,
-      title,
-      status: 'analyzing' as const,
-      chapter_count: chapters.length,
-      analyzed_count: 0,
-      analysis_from: from,
-      analysis_to: to,
-      analyzed_to: 0,
-    },
-    201,
-  )
-})
-
-// ─── Reaggregate (仅重跑 pass 2，不重新抽取) ────────────────────────────
-app.post('/:id/reaggregate', (c) => {
-  const novelId = c.req.param('id')
-  const novel = db
-    .prepare(`SELECT status FROM novel WHERE id = ?`)
-    .get(novelId) as { status: string } | undefined
-  if (!novel) return c.json({ error: 'not_found' }, 404)
-  if (novel.status === 'analyzing' || novel.status === 'splitting') {
-    return c.json({ error: 'busy', message: '当前正在分析中' }, 409)
-  }
-  // 同步翻状态，避免 UI 立刻刷新读到旧值
-  db.prepare(
-    `UPDATE novel SET status = 'analyzing', error = NULL, updated_at = ? WHERE id = ?`,
-  ).run(Date.now(), novelId)
-  reaggregate(novelId)
-  return c.json({ id: novelId })
-})
-
-// ─── Continue analysis (incremental) ─────────────────────────────────────
-app.post('/:id/continue', async (c) => {
-  const novelId = c.req.param('id')
-  const novel = db
-    .prepare(
-      `SELECT id, status, chapter_count, analyzed_to FROM novel WHERE id = ?`,
-    )
-    .get(novelId) as
-    | { id: string; status: string; chapter_count: number; analyzed_to: number }
-    | undefined
-  if (!novel) return c.json({ error: 'not_found' }, 404)
-  if (novel.status === 'analyzing' || novel.status === 'splitting') {
-    return c.json({ error: 'busy', message: '当前正在分析中' }, 409)
-  }
-
-  let more = 50
-  try {
-    const body = (await c.req.json()) as { more?: unknown }
-    if (body && typeof body.more !== 'undefined') {
-      const n = Number(body.more)
-      if (Number.isFinite(n) && Number.isInteger(n) && n > 0) more = n
-    }
-  } catch {
-    /* 空 body 就用默认值 */
-  }
-
-  if (novel.analyzed_to >= novel.chapter_count) {
-    return c.json(
-      { error: 'already_done', message: '所有章节都已分析完毕' },
-      400,
-    )
-  }
-
-  const from = novel.analyzed_to + 1
-  const to = Math.min(novel.analyzed_to + more, novel.chapter_count)
-
-  // 同步写入新 run 范围并翻状态，避免 UI 立即刷新时读到旧值
-  db.prepare(
-    `UPDATE novel SET analysis_from = ?, analysis_to = ?, analyzed_count = 0, status = 'analyzing', error = NULL, updated_at = ? WHERE id = ?`,
-  ).run(from, to, Date.now(), novelId)
-
-  startAnalysis(novelId, { from, to })
-
-  return c.json({ id: novelId, analysis_from: from, analysis_to: to })
-})
-
-function parseIntField(v: unknown, fallback: number): number {
-  if (typeof v === 'string' && v.trim() !== '') {
-    const n = Number(v)
-    if (Number.isFinite(n) && Number.isInteger(n)) return n
-  }
-  return fallback
-}
-
-// ─── Sub-resources ─────────────────────────────────────────────────────────
-
-app.get('/:id/chapters', (c) => {
-  const rows = db
-    .prepare(
-      `SELECT id, novel_id, number, title, summary
-       FROM chapter WHERE novel_id = ? ORDER BY number`,
-    )
-    .all(c.req.param('id'))
-  return c.json(rows)
-})
-
-app.get('/:id/chapters/:num', (c) => {
-  const row = db
-    .prepare(
-      `SELECT id, novel_id, number, title, original_text, summary
-       FROM chapter WHERE novel_id = ? AND number = ?`,
-    )
-    .get(c.req.param('id'), Number(c.req.param('num')))
-  if (!row) return c.json({ error: 'not_found' }, 404)
-  return c.json(row)
-})
-
-app.get('/:id/characters', (c) => {
-  const rows = db
-    .prepare(
-      `SELECT id, novel_id, name, aliases_json, description, first_chapter, last_chapter
-       FROM character WHERE novel_id = ? ORDER BY first_chapter, id`,
-    )
-    .all(c.req.param('id')) as {
-    id: number
-    novel_id: string
-    name: string
-    aliases_json: string
-    description: string
-    first_chapter: number
-    last_chapter: number
-  }[]
-
-  return c.json(
-    rows.map((r) => ({
-      id: r.id,
-      novel_id: r.novel_id,
-      name: r.name,
-      aliases: safeParseArray<string>(r.aliases_json),
-      description: r.description,
-      first_chapter: r.first_chapter,
-      last_chapter: r.last_chapter,
+    list.map((ch) => ({
+      id: ch.number,
+      novel_id: id,
+      number: ch.number,
+      title: ch.title,
+      summary: ch.summary,
     })),
   )
 })
 
-app.get('/:id/subplots', (c) => {
-  const novelId = c.req.param('id')
-  const subs = db
-    .prepare(
-      `SELECT s.id, s.novel_id, s.name, s.description, s.start_chapter, s.end_chapter
-       FROM subplot s WHERE s.novel_id = ? ORDER BY s.start_chapter, s.id`,
-    )
-    .all(novelId) as {
-    id: number
-    novel_id: string
-    name: string
-    description: string
-    start_chapter: number
-    end_chapter: number
-  }[]
-
-  const chs = db.prepare(
-    `SELECT sc.subplot_id, c.number
-     FROM subplot_chapter sc
-     JOIN chapter c ON c.id = sc.chapter_id
-     WHERE c.novel_id = ?`,
-  ).all(novelId) as { subplot_id: number; number: number }[]
-
-  const bySubplot = new Map<number, number[]>()
-  for (const r of chs) {
-    const arr = bySubplot.get(r.subplot_id) ?? []
-    arr.push(r.number)
-    bySubplot.set(r.subplot_id, arr)
+app.get('/:id/chapters/:n', async (c) => {
+  const id = c.req.param('id')
+  const n = Number(c.req.param('n'))
+  if (!Number.isFinite(n) || n < 1) {
+    return c.json({ error: 'invalid_chapter' }, 400)
   }
+  const ch = await readSourceChapter(id, n)
+  if (!ch) return c.json({ error: 'not_found' }, 404)
+  const raw = await readFile(paths.sourceRaw(id, n), 'utf8').catch(() => '')
+  return c.json({
+    id: n,
+    novel_id: id,
+    number: n,
+    title: ch.title,
+    original_text: raw,
+    summary: ch.summary,
+  })
+})
 
+// ─── Characters / Subplots / Hooks ───────────────────────────────────────
+
+app.get('/:id/characters', async (c) => {
+  const id = c.req.param('id')
+  const chars = await listSourceCharacters(id)
   return c.json(
-    subs.map((s) => ({
-      ...s,
-      chapters: (bySubplot.get(s.id) ?? []).sort((a, b) => a - b),
+    chars.map((ch, i) => ({
+      id: i + 1,
+      novel_id: id,
+      name: ch.canonical_name,
+      aliases: ch.aliases,
+      role: ch.role,
+      function_tags: ch.function_tags,
+      death_chapter: ch.death_chapter,
+      description: ch.description,
+      first_chapter: ch.first_chapter,
+      last_chapter: ch.last_chapter,
     })),
   )
 })
 
-app.get('/:id/hooks', (c) => {
-  const rows = db
-    .prepare(
-      `SELECT id, novel_id, description, type, category, planted_chapter, payoff_chapter, evidence_chapters_json
-       FROM hook WHERE novel_id = ? ORDER BY planted_chapter, id`,
-    )
-    .all(c.req.param('id')) as {
-    id: number
-    novel_id: string
-    description: string
-    type: string
-    category: string | null
-    planted_chapter: number
-    payoff_chapter: number | null
-    evidence_chapters_json: string
-  }[]
+app.get('/:id/subplots', async (c) => {
+  const id = c.req.param('id')
+  const subs = await readSourceSubplots(id)
   return c.json(
-    rows.map((r) => ({
-      id: r.id,
-      novel_id: r.novel_id,
-      description: r.description,
-      type: r.type,
-      category: r.category,
-      planted_chapter: r.planted_chapter,
-      payoff_chapter: r.payoff_chapter,
-      evidence_chapters: safeParseArray<number>(r.evidence_chapters_json),
+    subs.map((sp, i) => ({
+      id: i + 1,
+      novel_id: id,
+      name: sp.name,
+      function: sp.function,
+      description: sp.description,
+      start_chapter: sp.chapters[0] ?? 0,
+      end_chapter: sp.chapters[sp.chapters.length - 1] ?? 0,
+      chapters: sp.chapters,
+    })),
+  )
+})
+
+app.get('/:id/hooks', async (c) => {
+  const id = c.req.param('id')
+  const hooks = await readSourceHooks(id)
+  return c.json(
+    hooks.map((h, i) => ({
+      id: i + 1,
+      novel_id: id,
+      description: h.description,
+      type: 'long' as const,
+      category: h.category,
+      planted_chapter: h.planted_chapter,
+      payoff_chapter: h.payoff_chapter,
+      evidence_chapters: h.evidence_chapters,
     })),
   )
 })
 
 app.delete('/:id/hooks/:hookId', (c) => {
-  const novelId = c.req.param('id')
-  const hookId = Number(c.req.param('hookId'))
-  if (!Number.isFinite(hookId)) return c.json({ error: 'invalid_id' }, 400)
-  const info = db
-    .prepare(`DELETE FROM hook WHERE id = ? AND novel_id = ?`)
-    .run(hookId, novelId)
-  if (info.changes === 0) return c.json({ error: 'not_found' }, 404)
-  return c.body(null, 204)
+  return c.json({ error: 'not_implemented_v1', message: '当前不支持单条删除 hook' }, 501)
 })
 
-// ─── SSE: analysis progress ────────────────────────────────────────────────
+// ─── Continue / Reaggregate ──────────────────────────────────────────────
+
+app.post('/:id/continue', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json<{ more?: number }>().catch(() => ({ more: undefined }))
+  const more = Number(body?.more ?? 0)
+  if (!Number.isFinite(more) || more < 1) {
+    return c.json({ error: 'invalid_more' }, 400)
+  }
+  const cur = await readNovelIndex(id)
+  if (!cur) return c.json({ error: 'not_found' }, 404)
+  const from = cur.analyzed_to + 1
+  const to = Math.min(cur.analyzed_to + more, cur.chapter_count)
+  if (from > cur.chapter_count) {
+    return c.json({ error: 'already_complete' }, 400)
+  }
+  await updateNovelIndex(id, { analysis_from: from, analysis_to: to })
+  startAnalysis(id, { from, to })
+  return c.json({ id, analysis_from: from, analysis_to: to })
+})
+
+app.post('/:id/reaggregate', (c) => {
+  const id = c.req.param('id')
+  reaggregate(id)
+  return c.json({ id })
+})
+
+// ─── SSE ─────────────────────────────────────────────────────────────────
 
 app.get('/:id/events', (c) => {
-  const novelId = c.req.param('id')
-
-  const novel = db
-    .prepare(
-      `SELECT status, chapter_count, analyzed_count, analysis_from, analysis_to FROM novel WHERE id = ?`,
-    )
-    .get(novelId) as
-    | {
-        status: string
-        chapter_count: number
-        analyzed_count: number
-        analysis_from: number
-        analysis_to: number
+  const id = c.req.param('id')
+  const bus = getBus(id)
+  const stream = new ReadableStream({
+    start(controller) {
+      const enc = new TextEncoder()
+      const send = (event: AnalysisEvent) => {
+        controller.enqueue(enc.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`))
       }
-    | undefined
-
-  if (!novel) return c.json({ error: 'not_found' }, 404)
-
-  // 范围内实际有多少章
-  const rangeTotal = (
-    db.prepare(
-      `SELECT COUNT(*) AS n FROM chapter WHERE novel_id = ? AND number BETWEEN ? AND ?`,
-    ).get(novelId, novel.analysis_from, novel.analysis_to) as { n: number }
-  ).n
-
-  const bus = getBus(novelId)
-
-  return new Response(
-    new ReadableStream({
-      start(controller) {
-        const encoder = new TextEncoder()
-        const send = (event: AnalysisEvent) => {
-          controller.enqueue(
-            encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`),
-          )
+      const listener = (event: AnalysisEvent) => send(event)
+      bus.on('event', listener)
+      const ka = setInterval(() => {
+        try {
+          controller.enqueue(enc.encode(`: keepalive\n\n`))
+        } catch {
+          /* closed */
         }
-
-        // 先发一条当前状态快照（让断线重连的客户端立刻对齐）
-        send({ type: 'status', status: novel.status as never })
-        send({
-          type: 'analyze.progress',
-          analyzed: novel.analyzed_count,
-          total: rangeTotal,
-        })
-
-        const listener = (event: AnalysisEvent) => send(event)
-        bus.on('event', listener)
-
-        const keepalive = setInterval(() => {
-          try {
-            controller.enqueue(encoder.encode(`: keepalive\n\n`))
-          } catch {
-            /* closed */
-          }
-        }, 15_000)
-        // 不让 keepalive 把 event loop 撑住，阻碍进程退出
-        keepalive.unref()
-
-        c.req.raw.signal.addEventListener('abort', () => {
-          bus.off('event', listener)
-          clearInterval(keepalive)
-          try {
-            controller.close()
-          } catch {
-            /* already closed */
-          }
-        })
-      },
-    }),
-    {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      },
+      }, 15_000)
+      c.req.raw.signal.addEventListener('abort', () => {
+        bus.off('event', listener)
+        clearInterval(ka)
+        try {
+          controller.close()
+        } catch {
+          /* already closed */
+        }
+      })
     },
-  )
+  })
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 })
-
-// ─── utils ────────────────────────────────────────────────────────────────
-
-function safeParseArray<T>(json: string): T[] {
-  try {
-    const v = JSON.parse(json)
-    return Array.isArray(v) ? (v as T[]) : []
-  } catch {
-    return []
-  }
-}
 
 export { app as novelRoutes }
