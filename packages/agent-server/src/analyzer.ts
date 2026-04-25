@@ -6,7 +6,7 @@
 
 import { readFile } from 'node:fs/promises'
 import { DeepSeekClient, DeepSeekError, pMap } from './deepseek-client.js'
-import { buildSharedLlmClient } from './lib/llm-client.js'
+import { buildAnalyzerLlmClient } from './lib/llm-client.js'
 import { emitAnalysisEvent } from './event-bus.js'
 import { paths } from './storage/paths.js'
 import { writeSourceChapter } from './storage/source-writer.js'
@@ -930,7 +930,7 @@ export function startAnalysis(novelId: string, opts?: StartAnalysisOpts): void {
 }
 
 async function runAnalysis(novelId: string, opts: StartAnalysisOpts): Promise<void> {
-  const client = buildSharedLlmClient()
+  const client = buildAnalyzerLlmClient()
 
   const novel = await readNovelIndex(novelId)
   if (!novel) {
@@ -1015,7 +1015,7 @@ export function reaggregate(novelId: string): void {
   void (async () => {
     const novel = await readNovelIndex(novelId)
     if (!novel) return
-    const client = buildSharedLlmClient()
+    const client = buildAnalyzerLlmClient()
     await updateNovelIndex(novelId, { status: 'analyzing' })
     emitAnalysisEvent(novelId, { type: 'status', status: 'analyzing' })
     try {

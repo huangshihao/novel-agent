@@ -1,10 +1,25 @@
 import { DeepSeekClient } from '../deepseek-client.js'
 
 /**
- * OpenAI-compatible client used by analyzer + auto-title.
- * Prefers AGENT_* envs (the chat agent's provider); falls back to DEEPSEEK_*.
- * Keeps DeepSeekClient class as the implementation since it's just an
- * OpenAI-compatible wrapper.
+ * Analyzer 用：必须支持严格 JSON mode（response_format: json_object）。
+ * 实测百度千帆 qianfan-code-latest 的 JSON mode 不靠谱，会输出非严格 JSON 导致解析失败，
+ * 所以 analyzer 强制走 DeepSeek。
+ */
+export function buildAnalyzerLlmClient(): DeepSeekClient {
+  const apiKey = process.env['DEEPSEEK_API_KEY']
+  if (!apiKey) {
+    throw new Error('DEEPSEEK_API_KEY is required for analyzer (needs strict JSON mode)')
+  }
+  return new DeepSeekClient({
+    apiKey,
+    model: process.env['DEEPSEEK_MODEL'] ?? 'deepseek-chat',
+    baseUrl: process.env['DEEPSEEK_BASE_URL'] ?? 'https://api.deepseek.com/v1',
+  })
+}
+
+/**
+ * 通用文本生成客户端（auto-title 等不需要 JSON mode 的轻量场景）。
+ * 优先走 AGENT_*（用户配置的 agent endpoint，方便共享配额），fallback DEEPSEEK_*。
  */
 export function buildSharedLlmClient(): DeepSeekClient {
   const apiKey = process.env['AGENT_API_KEY'] || process.env['DEEPSEEK_API_KEY']
