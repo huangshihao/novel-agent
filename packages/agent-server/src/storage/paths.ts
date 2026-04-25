@@ -1,10 +1,24 @@
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 const DEFAULT_ROOT = join(homedir(), '.novel-agent', 'data')
 
+function findRepoRoot(start: string): string {
+  let dir = start
+  while (true) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) return start
+    dir = parent
+  }
+}
+
 function root(): string {
-  return process.env['NOVEL_AGENT_DATA_DIR'] ?? DEFAULT_ROOT
+  const envVal = process.env['NOVEL_AGENT_DATA_DIR']
+  if (!envVal) return DEFAULT_ROOT
+  if (isAbsolute(envVal)) return envVal
+  return resolve(findRepoRoot(process.cwd()), envVal)
 }
 
 function pad4(n: number): string {
