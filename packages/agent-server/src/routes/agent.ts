@@ -19,6 +19,7 @@ import {
   touchChatLastMsg,
   deleteChat as deleteChatStorage,
 } from '../storage/chat-store.js'
+import { loadChatHistoryForUi } from '../storage/chat-history.js'
 import { readNovelIndex } from '../storage/novel-index.js'
 
 const app = new Hono()
@@ -57,10 +58,8 @@ app.get('/:id/chats/:cid', async (c) => {
   const chatId = c.req.param('cid')
   const chat = await getChat(novelId, chatId)
   if (!chat) return c.json({ error: 'chat_not_found' }, 404)
-  // TODO: 加载消息历史返回（暂只回 metadata，前端先用 ExternalStoreRuntime 自己空跑；
-  // history 通过新建 SDK session 时 SessionManager 自动 replay 给 LLM，UI 上的旧消息需要
-  // 走单独的"读 jsonl 转成 UI message[]"逻辑——预留 endpoint，下一 task 加）
-  return c.json({ chat, messages: [] })
+  const messages = await loadChatHistoryForUi(novelId, chatId)
+  return c.json({ chat, messages })
 })
 
 app.patch('/:id/chats/:cid', async (c) => {

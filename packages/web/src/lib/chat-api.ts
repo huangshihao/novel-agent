@@ -1,4 +1,4 @@
-import type { ChatInfo, ActiveTask } from '@novel-agent/shared'
+import type { ChatInfo, ActiveTask, ThreadUiMessage } from '@novel-agent/shared'
 
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) {
@@ -23,6 +23,11 @@ export const chatApi = {
 
   list: (novelId: string) =>
     fetch(`/api/agent/${novelId}/chats`).then(j<ChatInfo[]>),
+
+  getHistory: (novelId: string, chatId: string) =>
+    fetch(`/api/agent/${novelId}/chats/${chatId}`).then(
+      j<{ chat: ChatInfo; messages: ThreadUiMessage[] }>,
+    ),
 
   create: (novelId: string, title?: string) =>
     fetch(`/api/agent/${novelId}/chats`, {

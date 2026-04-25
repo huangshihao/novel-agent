@@ -119,6 +119,16 @@ export type AgentEvent =
   | { type: 'done' }
   | { type: 'error'; message: string }
 
+export type ThreadUiMessagePart =
+  | { type: 'text'; text: string }
+  | { type: 'tool-call'; id: string; name: string; args: unknown; result?: unknown }
+
+export interface ThreadUiMessage {
+  id: string
+  role: 'user' | 'assistant'
+  parts: ThreadUiMessagePart[]
+}
+
 // Target (rewrite) records — shared between agent-server storage and web client
 export interface CharacterMapEntry {
   source: string

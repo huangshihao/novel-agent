@@ -4,6 +4,7 @@ import {
   type ThreadMessageLike,
   type AppendMessage,
 } from '@assistant-ui/react'
+import type { ThreadUiMessage } from '@novel-agent/shared'
 import { chatApi } from './chat-api.js'
 
 export interface ChatRuntimeOptions {
@@ -37,7 +38,17 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
     abortRef.current?.abort()
     abortRef.current = null
     setIsRunning(false)
-  }, [chatId])
+    if (!chatId) return
+    let cancelled = false
+    chatApi
+      .getHistory(novelId, chatId)
+      .then((r) => {
+        if (cancelled) return
+        setMessages(historyToThreadMessages(r.messages))
+      })
+      .catch(() => { /* noop: leave empty */ })
+    return () => { cancelled = true }
+  }, [novelId, chatId])
 
   const send = useCallback(
     async (text: string) => {
@@ -168,4 +179,24 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
   })
 
   return runtime
+}
+
+function historyToThreadMessages(history: ThreadUiMessage[]): ThreadMessageLike[] {
+  return history.map((m) => {
+    const content: Exclude<ThreadMessageLike['content'], string>[number][] = []
+    for (const part of m.parts) {
+      if (part.type === 'text') {
+        content.push({ type: 'text', text: part.text })
+      } else if (part.type === 'tool-call') {
+        content.push({
+          type: 'tool-call',
+          toolCallId: part.id,
+          toolName: part.name,
+          args: (part.args ?? {}) as never,
+          result: part.result,
+        })
+      }
+    }
+    return { id: m.id, role: m.role, content }
+  })
 }
