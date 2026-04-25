@@ -8,14 +8,18 @@ import {
   lsTool,
 } from '@mariozechner/pi-coding-agent'
 import type { AgentSession } from '@mariozechner/pi-coding-agent'
+import type { AgentMode } from '@novel-agent/shared'
 import { buildAgentModel, AGENT_PROVIDER } from './model.js'
 import { buildOutlineAgentTools } from './tools/index.js'
 import { outlineAgentSystemPrompt } from './system-prompts.js'
-import type { BatchRange } from './tools/write-chapter-outline.js'
 
 export interface OutlineAgentInit {
   novelId: string
-  batch: BatchRange
+  scope: { from: number; to: number }
+  mode: AgentMode
+  requirement?: string  // generate mode
+  reviseChapter?: number  // revise mode
+  feedback?: string  // revise mode
 }
 
 export async function createOutlineAgent(init: OutlineAgentInit): Promise<AgentSession> {
@@ -27,14 +31,21 @@ export async function createOutlineAgent(init: OutlineAgentInit): Promise<AgentS
     noExtensions: true,
     noPromptTemplates: true,
     noThemes: true,
-    systemPrompt: outlineAgentSystemPrompt(init.novelId, init.batch),
+    systemPrompt: outlineAgentSystemPrompt({
+      novelId: init.novelId,
+      scope: init.scope,
+      mode: init.mode,
+      requirement: init.requirement,
+      reviseChapter: init.reviseChapter,
+      feedback: init.feedback,
+    }),
   })
   await resourceLoader.reload()
   const { session } = await createAgentSession({
     model: buildAgentModel(),
     thinkingLevel: 'medium',
     tools: [readTool, grepTool, lsTool],
-    customTools: buildOutlineAgentTools(init.novelId, init.batch),
+    customTools: buildOutlineAgentTools(init.novelId, init.scope),
     sessionManager: SessionManager.inMemory(process.cwd()),
     authStorage,
     resourceLoader,

@@ -1,51 +1,15 @@
-export function outlineAgentSystemPrompt(novelId: string, batch: { from: number; to: number }): string {
-  return `你是中文网文改写大纲 agent。你的任务是基于参考小说的分析数据，生成新书的章级大纲。
+export interface OutlineSystemPromptInput {
+  novelId: string
+  scope: { from: number; to: number }
+  mode: 'generate' | 'revise'
+  requirement?: string
+  reviseChapter?: number
+  feedback?: string
+}
 
-═══ 本批范围 ═══
-
-第 ${batch.from} - ${batch.to} 章。每个 writeChapterOutline 调用的 number 必须在此范围内。
-
-═══ 数据布局 ═══
-
-- 参考小说分析：data/${novelId}/source/**.md（只读）
-  - source/meta.md：原书概览 / industry / world_rules / style_tags
-  - source/characters/*.md：每个原书角色一个文件
-  - source/subplots.md：原书支线（含 function 标签）
-  - source/hooks.md：原书长线伏笔（含 id 如 hk-001）
-  - source/chapters/*.md：每章摘要 + 关键事件
-- 改写产物：data/${novelId}/target/**（你写）
-  - target/maps.md：角色置换 + 题材置换
-  - target/outlines/*.md：你逐章产出的大纲
-  - target/state.md：runtime 状态（你不直接写，写章时自动派生）
-
-═══ 工作流 ═══
-
-1. 第一次进入：read source/meta.md 看原书题材；read source/characters/ 看主要角色
-2. read target/maps.md（如果存在）；如果不存在或要补充，调 updateMaps **生成置换表草案**
-   - character_entries：所有 source/characters 里 role !== 'tool' 的角色都要给一个 target 名（用户后续可改）
-   - setting：original_industry 抄自 source/meta，target_industry 你决定（与新名字风格一致）
-3. ls target/outlines/ 看本批已写过哪些章
-4. 对未写的每个 number（${batch.from}..${batch.to}）：
-   - read source/chapters/<n>.md 看原书该章干了啥
-   - 决定 plot（已应用置换表的中文段落）+ key_events
-   - 决定 hooks_to_plant / hooks_to_payoff（id 引用 source/hooks.md 或新埋 nhk-NNN）
-   - 决定 planned_state_changes（character_deaths / new_settings）
-   - 调 writeChapterOutline 写入
-
-═══ 用户对话改大纲 ═══
-
-如果用户在对话里说"把第 5 章反派换成女反派" / "第 23 章节奏太慢拆分"，你的处理：
-1. read 现有的 target/outlines/<n>.md 看当前大纲
-2. 按用户要求修改 plot / key_events / 其他字段
-3. 调 writeChapterOutline 重新写入（upsert 覆盖）
-4. 简洁回复用户改了什么
-
-═══ 注意 ═══
-
-- 永远不要让 LLM 自己创造剧情骨架——大纲应当锚定在原书 source_chapter_ref
-- 改写允许：人名替换（用 character_map）/ 行业替换（用 setting_map）/ 支线分支事件细节调整 / 同等强度的事件顺序调整
-- 主线节拍 / 长线伏笔的"形状"必须保留
-- 番茄爽文章节体量约一对一映射（原书 100 章 ≈ 新书 100 章）`
+export function outlineAgentSystemPrompt(input: OutlineSystemPromptInput): string {
+  // FULL CONTENT IN TASK 7 — temporary stub for compile
+  return `placeholder for ${input.novelId} ${input.mode}`
 }
 
 export function writerAgentSystemPrompt(novelId: string, batch: { from: number; to: number }): string {
