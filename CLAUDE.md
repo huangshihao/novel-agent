@@ -16,6 +16,17 @@
 | `packages/web/src/pages/NovelDetailPage.tsx` | 详情页 + tab（章节 / 人物 / 支线 / 钩子）+ 继续分析 / 仅重聚合 |
 | `packages/web/src/pages/NovelListPage.tsx` | 上传 + 列表 |
 | `packages/web/src/lib/api.ts` | 前端 API 封装，与 `routes/novel.ts` 一一对应 |
+| `packages/agent-server/src/agents/` | Pi-coding-agent runtime：model 配置、tool 工厂、outline/writer session 工厂、validator、注册表、system prompts |
+| `packages/agent-server/src/agents/tools/` | 4 个自定义 tool（`updateMaps` / `writeChapterOutline` / `getChapterContext` / `writeChapter`） |
+| `packages/agent-server/src/storage/target-*.ts` | `data/<id>/target/{maps,state,outlines,chapters}/**` 的读写 |
+| `packages/agent-server/src/storage/state.ts` | runtime `state.md`（角色 alive/dead + hook open/paid_off） |
+| `packages/agent-server/src/routes/agent.ts` | REST + SSE：start outline/writer / send message / autonomous run / list / delete |
+| `data/<novel-id>/target/**` | 改写产物（与 `source/` 对称）：`maps.md` / `state.md` / `outlines/<n>.md` / `chapters/<n>.md` |
+| `packages/web/src/pages/RewritePage.tsx` | 改写主页（左 tabs：置换表 / 大纲 / 正文；右侧：state 摘要 + AgentChat） |
+| `packages/web/src/components/AgentChat.tsx` | agent 对话面板（消息气泡 + "开始改写本批" 按钮） |
+| `packages/web/src/components/{MapsPanel,OutlinePanel,DraftsPanel,StatePanel}.tsx` | 4 个产物面板 |
+| `packages/web/src/lib/use-agent-stream.ts` | SSE 消费 hook（fetch + ReadableStream） |
+| `packages/web/src/lib/agent-api.ts` | agent session lifecycle API client |
 
 ## 改动流程
 
@@ -24,6 +35,8 @@
 **改 prompt**：只改 `analyzer.ts` 里的 prompt 函数。改完用"仅重聚合"端点复验（不消耗 Pass 1 的 token）——见 `analyzer.ts#reaggregate` / `POST /api/novel/:id/reaggregate`。
 
 **改 Pass 1 / 加聚合步**：记得保持**幂等**。Pass 1 跳过已有 extract 的章节，Pass 2 每次运行前 wipe `character` / `subplot` / `hook` 再重建。不要在 Pass 2 里增量 insert。
+
+**加新 agent tool**：在 `packages/agent-server/src/agents/tools/` 下加 `<tool>.ts`（用 `@sinclair/typebox` 写 parameters schema + `execute` 返回 `{ content: [{ type: 'text', text: JSON }], details }`），然后在 `tools/index.ts` 的相应 factory（outline/writer）里注册。Web 端 SSE 经 `useAgentStream` 自动转发 `tool.call` / `tool.result`，无需改前端。
 
 **每次结束前必做**：`pnpm typecheck` 全绿。
 
@@ -42,10 +55,17 @@
 3. **钩子数量被数字校准压死**：旧 refine prompt 给了"50 章 5-10 条"硬上限；高武/系统流实际密度是 50 章 30-80 条。基准要**随题材**，不要一刀切
 4. **跨章伞状钩子抓不到**：单章/单 batch 的 LLM 视角决定了它只能看到症状级钩子（"某某也成代言人"），永远看不到"某某真实身份"。解决：`synthesizeStructuralHooksPrompt` 跨章合成 pass
 5. **SSE 进度语义**：`analysis_from` / `analysis_to` 表示**最近一次 run** 的范围，不是累计范围。累计看 `analyzed_to`（高水位列）
+6. **pi-coding-agent SDK shape 不直觉**：`createAgentSession({...})` 不接受 `systemPrompt` —— system prompt 要塞给 `DefaultResourceLoader` 构造器（`new DefaultResourceLoader({ systemPrompt, ... })`）。`tools` 不是字符串数组而是 `Tool[]`（`readTool` / `grepTool` / `lsTool` 从 root 导入）。session 用 `session.subscribe(fn)` 拿事件、`session.sendUserMessage(text)` 发用户消息——`sendUserMessage` 在消息入队时就 resolve，turn 实际结束要监听 `agent_end` 事件
+7. **SSE 事件命名映射**：SDK 原生事件是 `message_update.assistantMessageEvent.text_delta` 等，需要在 `routes/agent.ts` 的 `subscribeAndPipe` 里翻译成 `useAgentStream` 期望的 `message.delta` / `message.complete` / `tool.call` / `tool.result` / `done`
+8. **shared types 跨包**：`MapsRecord` / `OutlineRecord` / `ChapterDraftRecord` / `StateRecord` / `AgentSessionInfo` / `AgentEvent` 都在 `packages/shared/src/types.ts`；后端 `target-writer.ts` 和 `state.ts` 用 `export type { ... } from '@novel-agent/shared'` 透传，避免双定义漂移
 
 ## Tab 滚动与 UX
 
 详情页的布局用 **single scroll + sticky tab nav**（`sticky top-0 z-10 bg-neutral-50/95 backdrop-blur`）。不要回退到嵌套滚动条。
+
+## 改写页布局
+
+改写页（`RewritePage`）用 **顶部 header（batch 范围 + 启动按钮）+ 左 main（tabs + 选中产物）+ 右 aside（state 摘要顶 / AgentChat 底）**。React Query 用 `refetchInterval: 3_000` 拉 maps / outlines / drafts / state（agent 写入侧 → UI 拉取侧的简单同步）。
 
 ## 不要做的事
 
@@ -53,6 +73,12 @@
 - ❌ 给 prompt 举例时用具体人名 — 换书立刻废
 - ❌ 改 prompt 后直接跑 `continue`（贵）— 先用 `reaggregate`（几乎免费）验证
 - ❌ 悄悄改 `analysis_from/to` 的语义 — UI 多处依赖它是"当前 run 的范围"
+- ❌ **不要并行启动同一 novel 的两个 outline session 或两个 writer session** — 它们都写 `target/state.md`，并发会互相覆盖
+- ❌ 直接 `fetch` 后端 API 不走 React Query — UI 多处需要轮询同步 agent 写入；统一走 `useQuery` + `refetchInterval`
+- ❌ 给 `useAgentStream` 加额外 buffer / 重连逻辑 — SSE event 已经按 `\n\n` 切；逻辑简单不要叠层。断流就刷新
+- ❌ 在 agent prompt 里举例时用具体人名（同 source 分析 prompt 的规则）
+- ❌ 改 agent system prompt 后直接跑全量 batch — 先用 1-3 章 batch 试 cost
+- ❌ 假设 agent session 在 server 重启后还在 — 内存存活，重启即丢；前端要处理 404
 
 ## 参考的外部约定
 
