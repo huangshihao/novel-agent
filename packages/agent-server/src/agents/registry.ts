@@ -6,6 +6,7 @@ export interface ChatEntry {
   chatId: string
   session: AgentSession
   isStreaming: boolean
+  closeStream?: () => void
 }
 
 const activeByNovel = new Map<string, ChatEntry>()
@@ -50,15 +51,26 @@ export function setStreaming(novelId: string, chatId: string, value: boolean): v
   if (e && e.chatId === chatId) e.isStreaming = value
 }
 
+export function setStreamCloser(
+  novelId: string,
+  chatId: string,
+  fn: (() => void) | undefined,
+): void {
+  const e = activeByNovel.get(novelId)
+  if (e && e.chatId === chatId) e.closeStream = fn
+}
+
 export function releaseChat(novelId: string): void {
   const e = activeByNovel.get(novelId)
   if (!e) return
+  try { e.closeStream?.() } catch { /* ignore */ }
   try { e.session.dispose() } catch { /* ignore */ }
   activeByNovel.delete(novelId)
 }
 
 export function __clearAll(): void {
   for (const e of activeByNovel.values()) {
+    try { e.closeStream?.() } catch { /* ignore */ }
     try { e.session.dispose() } catch { /* ignore */ }
   }
   activeByNovel.clear()

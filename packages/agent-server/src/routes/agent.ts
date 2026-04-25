@@ -8,6 +8,7 @@ import {
   getActiveChat,
   getChatEntry,
   setStreaming,
+  setStreamCloser,
   type ChatEntry,
 } from '../agents/registry.js'
 import {
@@ -159,6 +160,7 @@ function runWithStream(
         try { unsubscribe() } catch { /* ignore */ }
         try { controller.close() } catch { /* ignore */ }
         setStreaming(entry.novelId, entry.chatId, false)
+        setStreamCloser(entry.novelId, entry.chatId, undefined)
       }
       const unsubscribe = subscribeChatSession(entry.session, write, close)
       const ka = setInterval(() => {
@@ -167,6 +169,7 @@ function runWithStream(
       }, 15_000)
       abortSignal.addEventListener('abort', close)
       setStreaming(entry.novelId, entry.chatId, true)
+      setStreamCloser(entry.novelId, entry.chatId, close)
       if (userText !== null) {
         entry.session.sendUserMessage(userText).catch((err: unknown) => {
           write({ type: 'error', message: (err as Error).message ?? String(err) })

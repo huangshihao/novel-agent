@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { __clearAll, claimChat, releaseChat, getActiveChat, getChatEntry } from './registry.js'
+import {
+  __clearAll,
+  claimChat,
+  releaseChat,
+  getActiveChat,
+  getChatEntry,
+  setStreamCloser,
+} from './registry.js'
 import type { AgentSession } from '@mariozechner/pi-coding-agent'
 
 const fakeSession = (): AgentSession => ({
@@ -42,5 +49,18 @@ describe('registry (chat-keyed)', () => {
 
   it('getChatEntry returns null for unknown', () => {
     expect(getChatEntry('n1', 'c1')).toBeNull()
+  })
+
+  it('releaseChat invokes the registered stream closer', () => {
+    claimChat({ novelId: 'n1', chatId: 'c1', session: fakeSession() })
+    let closed = 0
+    setStreamCloser('n1', 'c1', () => { closed++ })
+    releaseChat('n1')
+    expect(closed).toBe(1)
+    expect(getActiveChat('n1')).toBeNull()
+  })
+
+  it('setStreamCloser is a no-op for unknown novel/chat', () => {
+    expect(() => setStreamCloser('nope', 'nope', () => {})).not.toThrow()
   })
 })
