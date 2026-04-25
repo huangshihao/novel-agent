@@ -4,11 +4,6 @@ import { agentApi } from '../lib/agent-api.js'
 import { useAgentStream, type AgentMessage } from '../lib/use-agent-stream.js'
 import clsx from 'clsx'
 
-// Tracks sessions that already had auto-kickoff sent. Module-level so it
-// survives React StrictMode's intentional unmount/remount in dev — without
-// this, the kickoff fires twice and queues two messages on the agent.
-const kickedOff = new Set<string>()
-
 interface Props {
   session: AgentSessionInfo
   onClosed: () => void
@@ -20,12 +15,9 @@ export function AgentChat({ session, onClosed }: Props) {
   const [draft, setDraft] = useState('')
 
   useEffect(() => {
-    if (kickedOff.has(sessionId)) return
-    kickedOff.add(sessionId)
-    const kickoff = buildKickoff(session)
     setMessages([])
-    send(agentApi.messageUrl(sessionId), kickoff).catch(console.error)
-  }, [sessionId, session, send, setMessages])
+    send(agentApi.messageUrl(sessionId), '').catch(console.error)
+  }, [sessionId, send, setMessages])
 
   const onSend = async () => {
     if (!draft.trim() || streaming) return
@@ -35,7 +27,6 @@ export function AgentChat({ session, onClosed }: Props) {
   }
 
   const onClose = async () => {
-    kickedOff.delete(sessionId)
     await agentApi.closeSession(sessionId)
     onClosed()
   }
@@ -97,19 +88,6 @@ function labelFor(s: AgentSessionInfo): string {
   const mode = s.mode === 'generate' ? '生成' : '修改'
   if (s.scope.from === s.scope.to) return `${mode}${role} 第 ${s.scope.from} 章`
   return `${mode}${role} ${s.scope.from}-${s.scope.to}`
-}
-
-function buildKickoff(s: AgentSessionInfo): string {
-  if (s.mode === 'generate' && s.requirement?.trim()) {
-    return s.requirement
-  }
-  if (s.mode === 'revise' && s.feedback?.trim()) {
-    return `（修改第 ${s.scope.from} 章）${s.feedback}`
-  }
-  if (s.mode === 'generate') {
-    return `请按 system prompt 中的工作流开始为第 ${s.scope.from}-${s.scope.to} 章生成${s.role === 'outline' ? '大纲' : '正文'}。`
-  }
-  return `请按 system prompt 中的修改流程开始处理第 ${s.scope.from} 章。`
 }
 
 function MessageBubble({ m }: { m: AgentMessage }) {

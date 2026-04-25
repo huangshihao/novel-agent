@@ -35,6 +35,26 @@ const app = new Hono()
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
+function buildFirstMessage(opts: {
+  role: 'outline' | 'writer'
+  mode: 'generate' | 'revise'
+  scope: { from: number; to: number }
+  requirement?: string
+  feedback?: string
+}): string {
+  if (opts.mode === 'generate' && opts.requirement?.trim()) {
+    return opts.requirement
+  }
+  if (opts.mode === 'revise' && opts.feedback?.trim()) {
+    return `（修改第 ${opts.scope.from} 章）${opts.feedback}`
+  }
+  if (opts.mode === 'generate') {
+    const what = opts.role === 'outline' ? '大纲' : '正文'
+    return `请按 system prompt 中的工作流开始为第 ${opts.scope.from}-${opts.scope.to} 章生成${what}。`
+  }
+  return `请按 system prompt 中的修改流程开始处理第 ${opts.scope.from} 章。`
+}
+
 function sessionToInfo(entry: SessionEntry): AgentSessionInfo {
   return {
     id: entry.id,
@@ -137,6 +157,15 @@ app.post('/:id/outline/start', async (c) => {
     session,
     requirement: body.requirement,
   })
+  const firstMsg = buildFirstMessage({
+    role: 'outline',
+    mode: 'generate',
+    scope: { from: v.from, to: v.to },
+    requirement: body.requirement,
+  })
+  session.sendUserMessage(firstMsg).catch((err: unknown) => {
+    console.error('[agent] outline/start initial message failed:', err)
+  })
   const info = sessionToInfo(getSessionEntry(id)!)
   return c.json(info)
 })
@@ -172,6 +201,15 @@ app.post('/:id/outline/revise', async (c) => {
     scope: { from: body.number, to: body.number },
     session,
     feedback: body.feedback,
+  })
+  const firstMsg = buildFirstMessage({
+    role: 'outline',
+    mode: 'revise',
+    scope: { from: body.number, to: body.number },
+    feedback: body.feedback,
+  })
+  session.sendUserMessage(firstMsg).catch((err: unknown) => {
+    console.error('[agent] outline/revise initial message failed:', err)
   })
   return c.json(sessionToInfo(getSessionEntry(id)!))
 })
@@ -243,6 +281,15 @@ app.post('/:id/writer/revise', async (c) => {
     session,
     feedback: body.feedback,
   })
+  const firstMsg = buildFirstMessage({
+    role: 'writer',
+    mode: 'revise',
+    scope: { from: body.number, to: body.number },
+    feedback: body.feedback,
+  })
+  session.sendUserMessage(firstMsg).catch((err: unknown) => {
+    console.error('[agent] writer/revise initial message failed:', err)
+  })
   return c.json(sessionToInfo(getSessionEntry(id)!))
 })
 
@@ -252,9 +299,13 @@ app.post('/session/:sid/message', async (c) => {
   const sid = c.req.param('sid')
   const entry = getSessionEntry(sid)
   if (!entry) return c.json({ error: 'session_not_found' }, 404)
-  const { content } = await c.req.json<{ content: string }>()
-  if (!content?.trim()) return c.json({ error: 'empty_content' }, 400)
-  return runWithStream(c.req.raw.signal, entry.session, content)
+  let content = ''
+  try {
+    const body = await c.req.json<{ content?: string }>()
+    content = body.content ?? ''
+  } catch { /* empty body OK */ }
+  // empty content = subscribe-only (no new message sent)
+  return runWithStream(c.req.raw.signal, entry.session, content.trim() || null)
 })
 
 // ─── Session: explicit close ─────────────────────────────────────────────
@@ -479,7 +530,7 @@ function waitForAgentEnd(session: AgentSession): Promise<void> {
 function runWithStream(
   abortSignal: AbortSignal,
   session: AgentSession,
-  userText: string,
+  userText: string | null,
 ): Response {
   const stream = new ReadableStream({
     start(controller) {
@@ -506,10 +557,12 @@ function runWithStream(
         try { controller.enqueue(enc.encode(`: keepalive\n\n`)) } catch { /* closed */ }
       }, 15_000)
       abortSignal.addEventListener('abort', close)
-      session.sendUserMessage(userText).catch((err: unknown) => {
-        write({ type: 'error', message: (err as Error).message ?? String(err) })
-        close()
-      })
+      if (userText !== null) {
+        session.sendUserMessage(userText).catch((err: unknown) => {
+          write({ type: 'error', message: (err as Error).message ?? String(err) })
+          close()
+        })
+      }
     },
   })
   return new Response(stream, {
