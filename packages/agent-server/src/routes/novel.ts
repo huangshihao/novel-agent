@@ -185,7 +185,6 @@ app.get('/:id/hooks', async (c) => {
       id: i + 1,
       novel_id: id,
       description: h.description,
-      type: 'long' as const,
       category: h.category,
       planted_chapter: h.planted_chapter,
       payoff_chapter: h.payoff_chapter,
