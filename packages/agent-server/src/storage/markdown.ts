@@ -7,13 +7,29 @@ export interface MdFile<F> {
   body: string
 }
 
+function stripUndefined(value: unknown): unknown {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  if (Array.isArray(value)) return value.map(stripUndefined).filter((v) => v !== undefined)
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const cleaned = stripUndefined(v)
+      if (cleaned !== undefined) out[k] = cleaned
+    }
+    return out
+  }
+  return value
+}
+
 export async function writeMd(
   path: string,
   frontMatter: Record<string, unknown>,
   body: string,
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
-  const content = matter.stringify(body, frontMatter)
+  const cleaned = stripUndefined(frontMatter) as Record<string, unknown>
+  const content = matter.stringify(body, cleaned)
   const tmp = `${path}.tmp`
   await writeFile(tmp, content, 'utf8')
   await rename(tmp, path)
