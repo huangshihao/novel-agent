@@ -1,12 +1,5 @@
 import type { AgentSessionInfo } from '@novel-agent/shared'
 
-interface StartSessionResponse {
-  session_id: string
-  novel_id: string
-  role: 'outline' | 'writer'
-  batch: { from: number; to: number }
-}
-
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) {
     let msg = `HTTP ${r.status}`
@@ -27,14 +20,14 @@ export const agentApi = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ from, to }),
-    }).then(j<StartSessionResponse>),
+    }).then(j<AgentSessionInfo>),
 
   startWriter: (novelId: string, from: number, to: number) =>
     fetch(`/api/agent/${novelId}/writer/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ from, to }),
-    }).then(j<StartSessionResponse>),
+    }).then(j<AgentSessionInfo>),
 
   listSessions: (novelId: string) =>
     fetch(`/api/agent/${novelId}/sessions`).then(j<AgentSessionInfo[]>),

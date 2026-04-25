@@ -26,7 +26,7 @@ export function RewritePage() {
     const resp = role === 'outline'
       ? await agentApi.startOutline(id, batch.from, batch.to)
       : await agentApi.startWriter(id, batch.from, batch.to)
-    setSessionId(resp.session_id)
+    setSessionId(resp.id)
   }
 
   if (!novel) return <p className="text-sm text-neutral-400">加载中...</p>
