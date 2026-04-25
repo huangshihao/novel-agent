@@ -14,6 +14,8 @@ import {
   listOutlines,
   readChapterDraft,
   listChapterDrafts,
+  outlineExists,
+  missingOutlines,
 } from './target-reader.js'
 
 let tmp: string
@@ -121,5 +123,26 @@ describe('target-reader', () => {
     expect(await readChapterDraft('nv-x', 1)).toBeNull()
     expect(await listOutlines('nv-x')).toEqual([])
     expect(await listChapterDrafts('nv-x')).toEqual([])
+  })
+})
+
+describe('outlineExists / missingOutlines', () => {
+  it('returns true when outline file exists', async () => {
+    await writeOutline('oe-test', makeOutline(1, 'p', ['e']))
+    await writeOutline('oe-test', makeOutline(3, 'p', ['e']))
+    expect(await outlineExists('oe-test', 1)).toBe(true)
+    expect(await outlineExists('oe-test', 2)).toBe(false)
+    expect(await outlineExists('oe-test', 3)).toBe(true)
+  })
+
+  it('missingOutlines returns empty when range fully covered', async () => {
+    for (const n of [1, 2, 3, 4, 5]) await writeOutline('mo-1', makeOutline(n, 'p', ['e']))
+    expect(await missingOutlines('mo-1', 1, 5)).toEqual([])
+  })
+
+  it('missingOutlines lists gaps', async () => {
+    await writeOutline('mo-2', makeOutline(1, 'p', ['e']))
+    await writeOutline('mo-2', makeOutline(3, 'p', ['e']))
+    expect(await missingOutlines('mo-2', 1, 5)).toEqual([2, 4, 5])
   })
 })

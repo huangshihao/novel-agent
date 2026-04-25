@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { listFrontMatter, readMdIfExists } from './markdown.js'
 import { paths } from './paths.js'
 import type {
@@ -80,4 +81,20 @@ export async function listChapterDrafts(
     if (r) out.push(r)
   }
   return out.sort((a, b) => a.number - b.number)
+}
+
+export async function outlineExists(novelId: string, n: number): Promise<boolean> {
+  return existsSync(paths.targetOutline(novelId, n))
+}
+
+export async function missingOutlines(
+  novelId: string,
+  from: number,
+  to: number,
+): Promise<number[]> {
+  const out: number[] = []
+  for (let n = from; n <= to; n++) {
+    if (!(await outlineExists(novelId, n))) out.push(n)
+  }
+  return out
 }
