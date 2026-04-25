@@ -95,15 +95,24 @@ export function NovelDetailPage() {
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
           <div className="flex items-center justify-between text-sm mb-2">
             <span className="text-neutral-600">
-              {novel.status === 'splitting' ? '正在切分...' : '正在分析章节...'}
+              {novel.status === 'splitting'
+                ? '正在切分...'
+                : percent < 100
+                  ? '正在分析章节...'
+                  : '正在聚合（人物 / 支线 / 钩子 / 设定 / 风格采样）...'}
             </span>
             <span className="font-mono text-xs text-neutral-500">
-              {novel.analyzed_count}/{rangeTotal} · {percent}%
+              {percent < 100
+                ? `${novel.analyzed_count}/${rangeTotal} · ${percent}%`
+                : '聚合中'}
             </span>
           </div>
           <div className="h-2 bg-neutral-100 rounded-full overflow-hidden">
             <div
-              className="h-full bg-amber-400 transition-[width] duration-500"
+              className={cn(
+                'h-full transition-[width] duration-500',
+                percent < 100 ? 'bg-amber-400' : 'bg-amber-400 animate-pulse',
+              )}
               style={{ width: `${percent}%` }}
             />
           </div>
