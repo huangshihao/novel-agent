@@ -1,9 +1,17 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
+import { GenerateForm } from './GenerateForm.js'
+import { ReviseButton } from './ReviseButton.js'
 import clsx from 'clsx'
 
-export function DraftsPanel({ novelId }: { novelId: string }) {
+interface Props {
+  novelId: string
+  maxChapter: number
+}
+
+export function DraftsPanel({ novelId, maxChapter }: Props) {
+  const qc = useQueryClient()
   const { data: drafts } = useQuery({
     queryKey: ['drafts', novelId],
     queryFn: () => api.listDrafts(novelId),
@@ -14,34 +22,45 @@ export function DraftsPanel({ novelId }: { novelId: string }) {
 
   return (
     <div className="flex h-full">
-      <aside className="w-48 border-r border-neutral-200 overflow-y-auto">
-        {!drafts?.length && (
-          <p className="text-xs text-neutral-400 p-3">
-            还没有正文。先生成大纲，再启动 writer agent。
-          </p>
-        )}
-        {drafts?.map((d) => (
-          <button
-            key={d.number}
-            onClick={() => setSelected(d.number)}
-            className={clsx(
-              'w-full text-left px-3 py-2 text-sm border-b border-neutral-100',
-              selected === d.number ? 'bg-amber-50 text-amber-900' : 'hover:bg-neutral-50',
-            )}
-          >
-            <div>第 {d.number} 章</div>
-            <div className="text-xs text-neutral-500">{d.word_count} 字</div>
-          </button>
-        ))}
+      <aside className="w-72 border-r border-neutral-200 overflow-y-auto">
+        <GenerateForm
+          novelId={novelId}
+          role="writer"
+          maxChapter={maxChapter}
+          onStarted={() => qc.invalidateQueries({ queryKey: ['agent-active', novelId] })}
+        />
+        <ul>
+          {!drafts?.length && (
+            <li className="text-xs text-neutral-400 p-3">还没有正文</li>
+          )}
+          {drafts?.map((d) => (
+            <li
+              key={d.number}
+              className={clsx(
+                'border-b border-neutral-100',
+                selected === d.number ? 'bg-amber-50' : 'hover:bg-neutral-50',
+              )}
+            >
+              <button
+                onClick={() => setSelected(d.number)}
+                className="w-full text-left px-3 py-2 text-sm flex items-center justify-between"
+              >
+                <span>第 {d.number} 章 <span className="text-xs text-neutral-500">{d.word_count} 字</span></span>
+                <ReviseButton
+                  novelId={novelId}
+                  role="writer"
+                  number={d.number}
+                  onStarted={() => qc.invalidateQueries({ queryKey: ['agent-active', novelId] })}
+                />
+              </button>
+            </li>
+          ))}
+        </ul>
       </aside>
 
       <section className="flex-1 overflow-y-auto p-6">
-        {selected == null && (
-          <p className="text-sm text-neutral-400">选一章阅读</p>
-        )}
-        {selected != null && (
-          <DraftDetail novelId={novelId} number={selected} />
-        )}
+        {selected == null && <p className="text-sm text-neutral-400">选一章阅读</p>}
+        {selected != null && <DraftDetail novelId={novelId} number={selected} />}
       </section>
     </div>
   )
