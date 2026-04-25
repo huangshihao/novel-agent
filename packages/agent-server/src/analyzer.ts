@@ -4,20 +4,19 @@
 //
 // 外部入口：startAnalysis(novelId) —— 异步起飞，通过 event-bus 广播进度。
 
-import { db } from './db.js'
 import { readFile } from 'node:fs/promises'
 import { DeepSeekClient, DeepSeekError, pMap } from './deepseek-client.js'
 import { emitAnalysisEvent } from './event-bus.js'
 import { paths } from './storage/paths.js'
 import { writeSourceChapter } from './storage/source-writer.js'
-import { listSourceChapters } from './storage/source-reader.js'
+import { listSourceChapters, wipeSourceAggregates } from './storage/source-reader.js'
 import {
   writeSourceCharacter,
   writeSourceHooks,
   writeSourceMeta,
   writeSourceSubplots,
 } from './storage/source-writer.js'
-import { readNovelIndex } from './storage/novel-index.js'
+import { readNovelIndex, updateNovelIndex } from './storage/novel-index.js'
 
 const BATCH_SIZE = 5
 const MAX_CHAPTER_CHARS = 1500
@@ -572,34 +571,12 @@ function buildClient(): DeepSeekClient {
   })
 }
 
-// ─── DB helpers ────────────────────────────────────────────────────────────
-
-function setNovelStatus(
-  novelId: string,
-  status: 'analyzing' | 'ready' | 'failed',
-  error?: string | null,
-): void {
-  db.prepare(
-    `UPDATE novel SET status = ?, error = ?, updated_at = ? WHERE id = ?`,
-  ).run(status, error ?? null, Date.now(), novelId)
-  emitAnalysisEvent(novelId, { type: 'status', status })
-}
-
-function incAnalyzed(novelId: string, inc: number, total: number): number {
-  const row = db
-    .prepare(
-      `UPDATE novel
-       SET analyzed_count = analyzed_count + ?, updated_at = ?
-       WHERE id = ?
-       RETURNING analyzed_count`,
-    )
-    .get(inc, Date.now(), novelId) as { analyzed_count: number }
-  emitAnalysisEvent(novelId, {
-    type: 'analyze.progress',
-    analyzed: row.analyzed_count,
-    total,
-  })
-  return row.analyzed_count
+async function incAnalyzed(novelId: string, inc: number, total: number): Promise<void> {
+  const cur = await readNovelIndex(novelId)
+  if (!cur) return
+  const next = cur.analyzed_count + inc
+  await updateNovelIndex(novelId, { analyzed_count: next })
+  emitAnalysisEvent(novelId, { type: 'analyze.progress', analyzed: next, total })
 }
 
 // ─── Pass 1: per-chapter batch extraction ─────────────────────────────────
@@ -958,31 +935,13 @@ export function startAnalysis(novelId: string, opts?: StartAnalysisOpts): void {
   void runAnalysis(novelId, opts ?? {}).catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[analyzer] fatal:', message)
-    try {
-      setNovelStatus(novelId, 'failed', message)
-      emitAnalysisEvent(novelId, { type: 'error', message })
-    } catch {
-      /* noop */
-    }
   })
 }
 
 async function runAnalysis(novelId: string, opts: StartAnalysisOpts): Promise<void> {
   const client = buildClient()
 
-  const novel = db
-    .prepare(
-      `SELECT analysis_from, analysis_to, analyzed_to, chapter_count
-       FROM novel WHERE id = ?`,
-    )
-    .get(novelId) as
-    | {
-        analysis_from: number
-        analysis_to: number
-        analyzed_to: number
-        chapter_count: number
-      }
-    | undefined
+  const novel = await readNovelIndex(novelId)
   if (!novel) {
     emitAnalysisEvent(novelId, { type: 'error', message: 'novel not found' })
     return
@@ -992,60 +951,33 @@ async function runAnalysis(novelId: string, opts: StartAnalysisOpts): Promise<vo
   const to = Math.min(opts.to ?? novel.analysis_to, novel.chapter_count)
 
   if (from < 1 || to < from) {
-    setNovelStatus(novelId, 'failed', `无效的分析范围: ${from}-${to}`)
-    emitAnalysisEvent(novelId, {
-      type: 'error',
-      message: `无效的分析范围: ${from}-${to}`,
-    })
+    await updateNovelIndex(novelId, { status: 'failed', error: `无效的分析范围: ${from}-${to}` })
+    emitAnalysisEvent(novelId, { type: 'error', message: `无效的分析范围: ${from}-${to}` })
     return
   }
 
-  // 把本次 run 的范围写回 novel 表（analysis_from/to 现在表达的是"最近一次 run"）
-  db.prepare(
-    `UPDATE novel SET analysis_from = ?, analysis_to = ?, analyzed_count = 0, error = NULL, updated_at = ? WHERE id = ?`,
-  ).run(from, to, Date.now(), novelId)
+  await updateNovelIndex(novelId, {
+    analysis_from: from,
+    analysis_to: to,
+    analyzed_count: 0,
+    error: null,
+    status: 'analyzing',
+  })
+  emitAnalysisEvent(novelId, { type: 'status', status: 'analyzing' })
 
-  setNovelStatus(novelId, 'analyzing')
-
-  // 本次 run 范围内的所有章节
-  const chaptersInRange = db
-    .prepare(
-      `SELECT id, number, title, original_text AS content
-       FROM chapter
-       WHERE novel_id = ? AND number BETWEEN ? AND ?
-       ORDER BY number`,
-    )
-    .all(novelId, from, to) as {
-    id: number
-    number: number
-    title: string
-    content: string
-  }[]
-
-  if (chaptersInRange.length === 0) {
-    setNovelStatus(novelId, 'failed', `第 ${from}-${to} 章范围内没有章节`)
-    emitAnalysisEvent(novelId, {
-      type: 'error',
-      message: `第 ${from}-${to} 章范围内没有章节`,
+  const chaptersInRange: { number: number; title: string; rawPath: string }[] = []
+  for (let n = from; n <= to; n++) {
+    chaptersInRange.push({
+      number: n,
+      title: `第${n}章`,
+      rawPath: paths.sourceRaw(novelId, n),
     })
-    return
   }
 
-  // 已有 extract 的章节直接跳过（支持增量续分析）
-  const existingExtractChapterIds = new Set(
-    (
-      db
-        .prepare(
-          `SELECT ce.chapter_id FROM chapter_extract ce
-           JOIN chapter c ON c.id = ce.chapter_id
-           WHERE c.novel_id = ?`,
-        )
-        .all(novelId) as { chapter_id: number }[]
-    ).map((r) => r.chapter_id),
+  const existing = new Set(
+    (await listSourceChapters(novelId)).map((c) => c.number),
   )
-  const chaptersToAnalyze = chaptersInRange.filter(
-    (c) => !existingExtractChapterIds.has(c.id),
-  )
+  const chaptersToAnalyze = chaptersInRange.filter((c) => !existing.has(c.number))
 
   const total = chaptersToAnalyze.length
   emitAnalysisEvent(novelId, { type: 'analyze.progress', analyzed: 0, total })
@@ -1056,19 +988,18 @@ async function runAnalysis(novelId: string, opts: StartAnalysisOpts): Promise<vo
     if (chaptersToAnalyze.length > 0) {
       await runPass1(client, novelId, chaptersToAnalyze, concurrency, total)
     }
-
     await wipeAndRunPass2(client, novelId)
 
-    // 推高水位
-    db.prepare(
-      `UPDATE novel SET analyzed_to = MAX(analyzed_to, ?), updated_at = ? WHERE id = ?`,
-    ).run(to, Date.now(), novelId)
-
-    setNovelStatus(novelId, 'ready')
+    await updateNovelIndex(novelId, {
+      analyzed_to: Math.max(novel.analyzed_to, to),
+      status: 'ready',
+    })
+    emitAnalysisEvent(novelId, { type: 'status', status: 'ready' })
     emitAnalysisEvent(novelId, { type: 'done' })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    setNovelStatus(novelId, 'failed', msg)
+    await updateNovelIndex(novelId, { status: 'failed', error: msg })
+    emitAnalysisEvent(novelId, { type: 'status', status: 'failed' })
     emitAnalysisEvent(novelId, { type: 'error', message: msg })
     if (err instanceof DeepSeekError) {
       console.error('[analyzer] DeepSeek error:', msg, err.body ?? '')
@@ -1078,21 +1009,11 @@ async function runAnalysis(novelId: string, opts: StartAnalysisOpts): Promise<vo
   }
 }
 
-/** 清空派生表（character/subplot/hook）并基于全部 extract 重新跑 Pass 2。 */
+/** 清空派生文件（character/subplot/hook/meta）并基于全部 extract 重新跑 Pass 2。 */
 async function wipeAndRunPass2(client: DeepSeekClient, novelId: string): Promise<void> {
-  const allExtracts = loadAllExtracts(novelId)
-  const allChapters = db
-    .prepare(`SELECT id, number FROM chapter WHERE novel_id = ? ORDER BY number`)
-    .all(novelId) as { id: number; number: number }[]
-
-  const wipeTx = db.transaction(() => {
-    db.prepare(`DELETE FROM character WHERE novel_id = ?`).run(novelId)
-    db.prepare(`DELETE FROM subplot WHERE novel_id = ?`).run(novelId)
-    db.prepare(`DELETE FROM hook WHERE novel_id = ?`).run(novelId)
-  })
-  wipeTx()
-
-  await runPass2(client, novelId, allChapters, allExtracts)
+  const allExtracts = await loadAllExtracts(novelId)
+  await wipeSourceAggregates(novelId)
+  await runPass2(client, novelId, allExtracts)
 }
 
 /**
@@ -1101,69 +1022,41 @@ async function wipeAndRunPass2(client: DeepSeekClient, novelId: string): Promise
  */
 export function reaggregate(novelId: string): void {
   void (async () => {
-    const novel = db
-      .prepare(`SELECT status FROM novel WHERE id = ?`)
-      .get(novelId) as { status: string } | undefined
+    const novel = await readNovelIndex(novelId)
     if (!novel) return
     const client = buildClient()
-    setNovelStatus(novelId, 'analyzing')
+    await updateNovelIndex(novelId, { status: 'analyzing' })
+    emitAnalysisEvent(novelId, { type: 'status', status: 'analyzing' })
     try {
       await wipeAndRunPass2(client, novelId)
-      setNovelStatus(novelId, 'ready')
+      await updateNovelIndex(novelId, { status: 'ready' })
+      emitAnalysisEvent(novelId, { type: 'status', status: 'ready' })
       emitAnalysisEvent(novelId, { type: 'done' })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      setNovelStatus(novelId, 'failed', msg)
+      await updateNovelIndex(novelId, { status: 'failed', error: msg })
+      emitAnalysisEvent(novelId, { type: 'status', status: 'failed' })
       emitAnalysisEvent(novelId, { type: 'error', message: msg })
       console.error('[analyzer] reaggregate error:', msg)
     }
-  })().catch((err: unknown) => {
-    console.error('[analyzer] reaggregate fatal:', err)
-  })
+  })().catch((err: unknown) => console.error('[analyzer] reaggregate fatal:', err))
 }
 
-function loadAllExtracts(novelId: string): Map<number, ChapterExtract> {
-  const rows = db
-    .prepare(
-      `SELECT c.number, c.summary,
-              ce.characters_json, ce.events_json,
-              ce.hooks_planted_json, ce.hooks_paid_json
-       FROM chapter_extract ce
-       JOIN chapter c ON c.id = ce.chapter_id
-       WHERE c.novel_id = ?
-       ORDER BY c.number`,
-    )
-    .all(novelId) as {
-    number: number
-    summary: string | null
-    characters_json: string
-    events_json: string
-    hooks_planted_json: string
-    hooks_paid_json: string
-  }[]
-
+async function loadAllExtracts(novelId: string): Promise<Map<number, ChapterExtract>> {
+  const list = await listSourceChapters(novelId)
   const out = new Map<number, ChapterExtract>()
-  for (const r of rows) {
-    out.set(
-      r.number,
-      normalizeExtract({
-        chapter_id: r.number,
-        summary: r.summary ?? '',
-        characters_present: safeJsonArray(r.characters_json),
-        key_events: safeJsonArray(r.events_json),
-        hooks_planted: safeJsonArray(r.hooks_planted_json),
-        hooks_paid: safeJsonArray(r.hooks_paid_json),
-      } as never),
-    )
+  for (const ch of list) {
+    out.set(ch.number, normalizeExtract({
+      chapter_id: ch.number,
+      summary: ch.summary,
+      characters_present: ch.characters_present,
+      key_events: ch.key_events,
+      hooks_planted: ch.hooks_planted_candidates.map((c) => ({
+        desc: c.desc,
+        category: c.category,
+      })),
+      hooks_paid: ch.hooks_paid.map((rd) => ({ ref_desc: rd })),
+    } as never))
   }
   return out
-}
-
-function safeJsonArray<T>(s: string): T[] {
-  try {
-    const v = JSON.parse(s)
-    return Array.isArray(v) ? (v as T[]) : []
-  } catch {
-    return []
-  }
 }
