@@ -1,16 +1,14 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
-import { GenerateForm } from './GenerateForm.js'
 import { ReviseButton } from './ReviseButton.js'
 import clsx from 'clsx'
 
 interface Props {
   novelId: string
-  maxChapter: number
 }
 
-export function DraftsPanel({ novelId, maxChapter }: Props) {
+export function DraftsPanel({ novelId }: Props) {
   const qc = useQueryClient()
   const { data: drafts } = useQuery({
     queryKey: ['drafts', novelId],
@@ -22,16 +20,12 @@ export function DraftsPanel({ novelId, maxChapter }: Props) {
 
   return (
     <div className="flex h-full">
-      <aside className="w-72 border-r border-neutral-200 overflow-y-auto">
-        <GenerateForm
-          novelId={novelId}
-          role="writer"
-          maxChapter={maxChapter}
-          onStarted={() => qc.invalidateQueries({ queryKey: ['agent-active', novelId] })}
-        />
+      <aside className="w-64 border-r border-neutral-200 overflow-y-auto">
         <ul>
           {!drafts?.length && (
-            <li className="text-xs text-neutral-400 p-3">还没有正文</li>
+            <li className="text-xs text-neutral-400 p-4">
+              还没有正文。在右侧启动 writer agent 生成。
+            </li>
           )}
           {drafts?.map((d) => (
             <li

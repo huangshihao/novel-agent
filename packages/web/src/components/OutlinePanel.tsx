@@ -1,16 +1,14 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
-import { GenerateForm } from './GenerateForm.js'
 import { ReviseButton } from './ReviseButton.js'
 import clsx from 'clsx'
 
 interface Props {
   novelId: string
-  maxChapter: number
 }
 
-export function OutlinePanel({ novelId, maxChapter }: Props) {
+export function OutlinePanel({ novelId }: Props) {
   const qc = useQueryClient()
   const { data: outlines } = useQuery({
     queryKey: ['outlines', novelId],
@@ -22,16 +20,12 @@ export function OutlinePanel({ novelId, maxChapter }: Props) {
 
   return (
     <div className="flex h-full">
-      <aside className="w-72 border-r border-neutral-200 overflow-y-auto">
-        <GenerateForm
-          novelId={novelId}
-          role="outline"
-          maxChapter={maxChapter}
-          onStarted={() => qc.invalidateQueries({ queryKey: ['agent-active', novelId] })}
-        />
+      <aside className="w-64 border-r border-neutral-200 overflow-y-auto">
         <ul>
           {!outlines?.length && (
-            <li className="text-xs text-neutral-400 p-3">还没有大纲</li>
+            <li className="text-xs text-neutral-400 p-4">
+              还没有大纲。在右侧启动大纲 agent 生成。
+            </li>
           )}
           {outlines?.map((o) => (
             <li

@@ -10,6 +10,7 @@ import { DraftsPanel } from '../components/DraftsPanel.js'
 import { StatePanel } from '../components/StatePanel.js'
 import { AgentChat } from '../components/AgentChat.js'
 import { BatchJobPanel } from '../components/BatchJobPanel.js'
+import { GenerateForm } from '../components/GenerateForm.js'
 import clsx from 'clsx'
 
 type Tab = 'maps' | 'outlines' | 'drafts'
@@ -83,8 +84,8 @@ export function RewritePage() {
           </nav>
           <div className="flex-1 overflow-hidden">
             {tab === 'maps' && <MapsPanel novelId={id} />}
-            {tab === 'outlines' && <OutlinePanel novelId={id} maxChapter={maxChapter} />}
-            {tab === 'drafts' && <DraftsPanel novelId={id} maxChapter={maxChapter} />}
+            {tab === 'outlines' && <OutlinePanel novelId={id} />}
+            {tab === 'drafts' && <DraftsPanel novelId={id} />}
           </div>
         </main>
 
@@ -93,9 +94,29 @@ export function RewritePage() {
             <StatePanel novelId={id} />
           </div>
           <div className="flex-1 overflow-hidden">
-            {!active && (
+            {!active && tab === 'maps' && (
               <div className="flex items-center justify-center h-full text-sm text-neutral-400 p-4 text-center">
-                无活跃任务。在大纲 / 正文 tab 启动批量生成或单章修改。
+                切到大纲 / 正文 tab 启动 agent
+              </div>
+            )}
+            {!active && tab === 'outlines' && (
+              <div className="overflow-y-auto h-full">
+                <GenerateForm
+                  novelId={id}
+                  role="outline"
+                  maxChapter={maxChapter}
+                  onStarted={() => qc.invalidateQueries({ queryKey: ['agent-active', id] })}
+                />
+              </div>
+            )}
+            {!active && tab === 'drafts' && (
+              <div className="overflow-y-auto h-full">
+                <GenerateForm
+                  novelId={id}
+                  role="writer"
+                  maxChapter={maxChapter}
+                  onStarted={() => qc.invalidateQueries({ queryKey: ['agent-active', id] })}
+                />
               </div>
             )}
             {active?.kind === 'session' && (
