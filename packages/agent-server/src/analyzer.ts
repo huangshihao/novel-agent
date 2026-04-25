@@ -58,6 +58,9 @@ interface RefinedHook {
 interface DedupedCharacter {
   canonical_name: string
   aliases: string[]
+  role: 'protagonist' | 'female-lead' | 'antagonist' | 'mentor' | 'family' | 'side' | 'tool' | null
+  function_tags: string[]
+  death_chapter: number | null
   description: string
 }
 
@@ -353,38 +356,60 @@ ${JSON.stringify(input.paid, null, 2)}
 function charactersPrompt(input: {
   characters: { name: string; chapters: number[]; summaries: { chapter: number; summary: string }[] }[]
 }): string {
-  return `下面是一部中文网文的候选人物名字，以及他们出现的章节摘要。请你做两件事：**合并别名** + **筛掉工具人** + **严格基于证据写描述**。
+  return `下面是一部中文网文的候选人物名字，以及他们出现的章节摘要。请你做四件事：**合并别名** + **筛掉工具人** + **判定 role + function_tags + death_chapter** + **写描述**。
 
 ─── 规则 ───
 
 1. **合并别名**：「老王/王老五/王哥」这类称呼等同一人时合并；canonical_name 取最正式的名字，其他放 aliases。
+
 2. **跳过一次性工具人**：以下条件之一就**不要**为其建卡（不出现在输出里）：
    - 仅在 1 章出现 && 没有台词 && 没有明显推动剧情
-   - 纯背景提及的泛指称呼（如路人、村民、采购员）
+   - 纯背景提及的泛指称呼（路人、村民、采购员）
    - 仅作为对白中被提及、本人并未真正登场
-   只给**主要角色**和**实际推动剧情的配角**建卡。
-3. **描述严禁凭空推测亲属关系**：
-   - 父/母/子/女/兄/弟/姐/妹/夫/妻/叔/姑/舅/姨/甥/侄/孙 等关系，**必须**有摘要里的明文证据支持（例如称呼、直接陈述）才能写。
-   - 无证据就**只描述他们做了什么**，不要写关系。
-   - 例：摘要写"小孩们喊陈婉'姑姑'"→ 可以写"陈婉的侄辈"；若只写"小孩们围着陈婉"→ 只能写"和陈婉同家的小孩"，**不要**写"陈婉的孩子"。
-4. **description** 不超过 80 字，以"他在书中做了什么"为主，关系只在有证据时点到为止。
+
+3. **判定 role**（必填，从下面 7 选 1）：
+   - protagonist：主角
+   - female-lead：女主角 / 男主角的核心伴侣
+   - antagonist：反派 / 主要对手
+   - mentor：师父 / 引导者
+   - family：主角的家人
+   - side：重要配角（朋友/同事/对手但非反派）
+   - tool：工具人型配角（推动一次/几次剧情后退场）
+
+4. **判定 function_tags**：自由文本数组，2-4 个标签描述这个角色在书里干了什么（如"茶馆老板"、"主角的青梅竹马"、"反派组织头目"）。
+
+5. **判定 death_chapter**：
+   - 必须在摘要里有**明文死亡描写**（"X 死了"、"被 X 杀死"、"葬礼"、"含恨而终"等）才能填章号
+   - 没有明文死亡描写就填 null
+   - 不要凭空推测
+
+6. **描述严禁凭空推测亲属关系**：
+   - 父/母/子/女/兄/弟等关系**必须**有摘要里的明文证据（称呼、直接陈述）才能写
+   - 无证据就**只描述他们做了什么**，不要写关系
+   - 例：摘要写"小孩们喊陈婉'姑姑'"→ 可以写"陈婉的侄辈"；若只写"小孩们围着陈婉"→ 只能写"和陈婉同家的小孩"
+
+7. **description** 不超过 80 字，以"他在书中做了什么 + 性格"为主，关系只在有证据时点到为止。
 
 ─── 反面示例 ───
 
-✗ 坏描述："陈婉的三个孩子，收到水果罐头"（陈婉未婚且摘要没说是她孩子）
-✗ 坏描述："采购员，提及卖野味"（仅被提及、没登场、纯工具人 → 根本不该出现在输出）
-✓ 好描述："陈婉的侄辈，在她晕倒时哭喊'姑姑'"（有明文证据）
-✓ 好描述："村里的铁匠，从夹层取出一把抗战老刀送给周文山"（有台词/动作）
+✗ 死亡：摘要写"X 受伤倒下"→ 不要填 death_chapter（受伤不等于死亡）
+✗ 关系："陈婉的三个孩子"（陈婉未婚且摘要没说是她孩子）
+✗ 工具人："采购员，提及卖野味"（仅被提及、没登场 → 根本不该出现在输出）
+✓ 死亡：摘要明确"李三在第 87 章战死"→ death_chapter: 87
+✓ 关系："陈婉的侄辈，在她晕倒时哭喊'姑姑'"（有明文证据）
 
 ─── 输出 ───
 
-严格 JSON，仅包含通过上述筛选的角色：
+严格 JSON：
 
 {
   "characters": [
     {
       "canonical_name": "...",
       "aliases": ["..."],
+      "role": "protagonist|female-lead|antagonist|mentor|family|side|tool",
+      "function_tags": ["...", "..."],
+      "death_chapter": <章号或 null>,
       "description": "..."
     }
   ]
@@ -641,7 +666,14 @@ async function runPass2(
     } catch (err) {
       console.warn('[analyzer] character dedupe failed, falling back to raw names:', (err as Error).message)
       // 失败回退：每个 raw name 就是一个独立 character
-      deduped = rawNames.map((n) => ({ canonical_name: n, aliases: [], description: '' }))
+      deduped = rawNames.map((n) => ({
+        canonical_name: n,
+        aliases: [],
+        role: null,
+        function_tags: [],
+        death_chapter: null,
+        description: '',
+      }))
     }
   }
 
