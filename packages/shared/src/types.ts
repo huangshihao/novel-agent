@@ -116,3 +116,66 @@ export type AgentEvent =
   | { type: 'tool.result'; name: string; result: unknown }
   | { type: 'done' }
   | { type: 'error'; message: string }
+
+// Target (rewrite) records — shared between agent-server storage and web client
+export interface CharacterMapEntry {
+  source: string
+  target: string
+  note?: string
+}
+
+export interface SettingMap {
+  original_industry: string
+  target_industry: string
+  key_term_replacements: Record<string, string>
+}
+
+export interface MapsRecord {
+  character_map: CharacterMapEntry[]
+  setting_map: SettingMap | null
+}
+
+export interface OutlineRecord {
+  number: number
+  source_chapter_ref: number
+  hooks_to_plant: string[]
+  hooks_to_payoff: string[]
+  planned_state_changes: {
+    character_deaths: string[]
+    new_settings: string[]
+  }
+  plot: string
+  key_events: string[]
+}
+
+export interface ChapterDraftRecord {
+  number: number
+  title: string
+  word_count: number
+  written_at: string
+  content: string
+}
+
+export type ChapterDraftSummary = Omit<ChapterDraftRecord, 'content'>
+
+// State (alive status + hook progression) record
+export interface AliveStatus {
+  alive: boolean
+  last_seen_chapter: number
+  death_chapter?: number
+}
+
+export interface NewHook {
+  id: string
+  description: string
+  planted_chapter: number
+  expected_payoff_chapter: number | null
+  status: 'open' | 'paid_off'
+  paid_chapter?: number
+}
+
+export interface StateRecord {
+  alive_status: Record<string, AliveStatus>
+  hooks: Record<string, { status: 'open' | 'paid_off'; paid_chapter?: number }>
+  new_hooks: NewHook[]
+}

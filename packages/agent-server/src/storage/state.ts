@@ -1,29 +1,11 @@
+import type { AliveStatus, StateRecord } from '@novel-agent/shared'
 import { readMdIfExists, writeMd } from './markdown.js'
 import { paths } from './paths.js'
 import { readSourceHooks } from './source-reader.js'
 import { readMaps } from './target-reader.js'
 import type { OutlineRecord } from './target-writer.js'
 
-export interface AliveStatus {
-  alive: boolean
-  last_seen_chapter: number
-  death_chapter?: number
-}
-
-export interface NewHook {
-  id: string
-  description: string
-  planted_chapter: number
-  expected_payoff_chapter: number | null
-  status: 'open' | 'paid_off'
-  paid_chapter?: number
-}
-
-export interface StateRecord {
-  alive_status: Record<string, AliveStatus>
-  hooks: Record<string, { status: 'open' | 'paid_off'; paid_chapter?: number }>
-  new_hooks: NewHook[]
-}
+export type { AliveStatus, NewHook, StateRecord } from '@novel-agent/shared'
 
 export async function readState(novelId: string): Promise<StateRecord | null> {
   const md = await readMdIfExists<StateRecord>(paths.targetState(novelId))
