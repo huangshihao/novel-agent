@@ -18,6 +18,14 @@ import {
   readSourceSubplots,
   readSourceHooks,
 } from '../storage/source-reader.js'
+import {
+  listChapterDrafts,
+  listOutlines,
+  readChapterDraft,
+  readMaps,
+  readOutline,
+} from '../storage/target-reader.js'
+import { readState } from '../storage/state.js'
 import { paths } from '../storage/paths.js'
 
 const app = new Hono()
@@ -222,6 +230,29 @@ app.post('/:id/reaggregate', (c) => {
   const id = c.req.param('id')
   reaggregate(id)
   return c.json({ id })
+})
+
+// ─── Maps / Outlines / Drafts / State ───────────────────────────────────
+
+app.get('/:id/maps', async (c) => c.json(await readMaps(c.req.param('id'))))
+
+app.get('/:id/state', async (c) => c.json(await readState(c.req.param('id'))))
+
+app.get('/:id/outlines', async (c) => c.json(await listOutlines(c.req.param('id'))))
+
+app.get('/:id/outlines/:n', async (c) => {
+  const o = await readOutline(c.req.param('id'), Number(c.req.param('n')))
+  return o ? c.json(o) : c.json({ error: 'not_found' }, 404)
+})
+
+app.get('/:id/drafts', async (c) => {
+  const list = await listChapterDrafts(c.req.param('id'))
+  return c.json(list.map(({ content: _content, ...rest }) => rest))
+})
+
+app.get('/:id/drafts/:n', async (c) => {
+  const d = await readChapterDraft(c.req.param('id'), Number(c.req.param('n')))
+  return d ? c.json(d) : c.json({ error: 'not_found' }, 404)
 })
 
 // ─── SSE ─────────────────────────────────────────────────────────────────
