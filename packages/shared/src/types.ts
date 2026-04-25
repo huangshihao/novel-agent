@@ -100,53 +100,24 @@ export type AnalysisEvent =
   | { type: 'done' }
   | { type: 'error'; message: string }
 
-export type AgentRole = 'outline' | 'writer'
-export type AgentMode = 'generate' | 'revise'
-
-export interface AgentSessionInfo {
+export interface ChatInfo {
   id: string
   novel_id: string
-  role: AgentRole
-  mode: AgentMode
-  scope: { from: number; to: number }
-  requirement?: string
-  feedback?: string
-  created_at: number
+  title: string
+  created_at: string
+  last_msg_at: string
+  last_user_text: string
 }
 
-export type BatchJobStatus = 'running' | 'paused' | 'done' | 'aborted'
-
-export interface BatchJobInfo {
-  id: string
-  novel_id: string
-  requirement: string
-  chapters: number[]
-  cursor: number
-  completed: number[]
-  failed: number[]
-  current: number | null
-  status: BatchJobStatus
-  error?: string
-  created_at: number
-}
-
-export type ActiveTask =
-  | { kind: 'session'; session: AgentSessionInfo }
-  | { kind: 'batch'; batch: BatchJobInfo }
+export type ActiveTask = { chatId: string } | null
 
 export type AgentEvent =
   | { type: 'message.delta'; content: string }
   | { type: 'message.complete'; content: string }
-  | { type: 'tool.call'; name: string; params: unknown }
-  | { type: 'tool.result'; name: string; result: unknown }
+  | { type: 'tool.call'; id: string; name: string; params: unknown }
+  | { type: 'tool.result'; id: string; name: string; result: unknown }
   | { type: 'done' }
   | { type: 'error'; message: string }
-  | { type: 'batch.progress'; completed: number; total: number; current: number | null }
-  | { type: 'batch.worker_start'; chapter: number }
-  | { type: 'batch.worker_end'; chapter: number; ok: boolean; error?: string }
-  | { type: 'batch.done' }
-  | { type: 'batch.aborted' }
-  | { type: 'batch.paused'; chapter: number; error: string }
 
 // Target (rewrite) records — shared between agent-server storage and web client
 export interface CharacterMapEntry {
