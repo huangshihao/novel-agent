@@ -9,23 +9,42 @@ import {
   removeSession,
   listSessionsByNovel,
 } from '../agents/registry.js'
+import { readNovelIndex } from '../storage/novel-index.js'
 
 const app = new Hono()
+
+async function validateBatch(
+  novelId: string,
+  from: unknown,
+  to: unknown,
+): Promise<{ ok: true; from: number; to: number } | { ok: false; status: 400 | 404; error: string; analyzed_to?: number }> {
+  if (!Number.isFinite(from) || !Number.isFinite(to) || (from as number) < 1 || (to as number) < (from as number)) {
+    return { ok: false, status: 400, error: 'invalid_range' }
+  }
+  const novel = await readNovelIndex(novelId)
+  if (!novel) return { ok: false, status: 404, error: 'novel_not_found' }
+  if (novel.analyzed_to < 1) {
+    return { ok: false, status: 400, error: 'no_analyzed_chapters', analyzed_to: 0 }
+  }
+  if ((to as number) > novel.analyzed_to) {
+    return { ok: false, status: 400, error: 'range_exceeds_analyzed', analyzed_to: novel.analyzed_to }
+  }
+  return { ok: true, from: from as number, to: to as number }
+}
 
 // ─── Start sessions ──────────────────────────────────────────────────────
 
 app.post('/:id/outline/start', async (c) => {
   const novelId = c.req.param('id')
   const { from, to } = await c.req.json<{ from: number; to: number }>()
-  if (!Number.isFinite(from) || !Number.isFinite(to) || from < 1 || to < from) {
-    return c.json({ error: 'invalid_range' }, 400)
-  }
-  const session = await createOutlineAgent({ novelId, batch: { from, to } })
-  const sessionId = registerSession({ novelId, role: 'outline', batch: { from, to }, session })
+  const v = await validateBatch(novelId, from, to)
+  if (!v.ok) return c.json({ error: v.error, analyzed_to: v.analyzed_to }, v.status)
+  const session = await createOutlineAgent({ novelId, batch: { from: v.from, to: v.to } })
+  const sessionId = registerSession({ novelId, role: 'outline', batch: { from: v.from, to: v.to }, session })
   const info: AgentSessionInfo = {
     id: sessionId,
     role: 'outline',
-    batch: { from, to },
+    batch: { from: v.from, to: v.to },
     created_at: Date.now(),
   }
   return c.json(info)
@@ -34,15 +53,14 @@ app.post('/:id/outline/start', async (c) => {
 app.post('/:id/writer/start', async (c) => {
   const novelId = c.req.param('id')
   const { from, to } = await c.req.json<{ from: number; to: number }>()
-  if (!Number.isFinite(from) || !Number.isFinite(to) || from < 1 || to < from) {
-    return c.json({ error: 'invalid_range' }, 400)
-  }
-  const session = await createWriterAgent({ novelId, batch: { from, to } })
-  const sessionId = registerSession({ novelId, role: 'writer', batch: { from, to }, session })
+  const v = await validateBatch(novelId, from, to)
+  if (!v.ok) return c.json({ error: v.error, analyzed_to: v.analyzed_to }, v.status)
+  const session = await createWriterAgent({ novelId, batch: { from: v.from, to: v.to } })
+  const sessionId = registerSession({ novelId, role: 'writer', batch: { from: v.from, to: v.to }, session })
   const info: AgentSessionInfo = {
     id: sessionId,
     role: 'writer',
-    batch: { from, to },
+    batch: { from: v.from, to: v.to },
     created_at: Date.now(),
   }
   return c.json(info)
