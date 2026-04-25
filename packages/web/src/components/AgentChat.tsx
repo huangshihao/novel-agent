@@ -1,24 +1,28 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { AgentSessionInfo } from '@novel-agent/shared'
 import { agentApi } from '../lib/agent-api.js'
 import { useAgentStream, type AgentMessage } from '../lib/use-agent-stream.js'
 import clsx from 'clsx'
 
 interface Props {
-  sessionId: string | null
-  onClosed?: () => void
+  session: AgentSessionInfo
+  onClosed: () => void
 }
 
-export function AgentChat({ sessionId, onClosed }: Props) {
-  const { messages, streaming, send } = useAgentStream({ sessionId })
+export function AgentChat({ session, onClosed }: Props) {
+  const sessionId = session.id
+  const { messages, streaming, send, setMessages } = useAgentStream({ sessionId })
   const [draft, setDraft] = useState('')
+  const [autoStarted, setAutoStarted] = useState(false)
 
-  if (!sessionId) {
-    return (
-      <div className="flex items-center justify-center h-full text-sm text-neutral-400">
-        无活动 agent session
-      </div>
-    )
-  }
+  // For freshly-created session: auto-send the initial kickoff to start agent's first turn.
+  useEffect(() => {
+    if (autoStarted) return
+    setAutoStarted(true)
+    const kickoff = buildKickoff(session)
+    setMessages([])
+    send(agentApi.messageUrl(sessionId), kickoff).catch(console.error)
+  }, [autoStarted, sessionId, session, send, setMessages])
 
   const onSend = async () => {
     if (!draft.trim() || streaming) return
@@ -27,35 +31,23 @@ export function AgentChat({ sessionId, onClosed }: Props) {
     await send(agentApi.messageUrl(sessionId), content).catch(console.error)
   }
 
-  const onRun = async () => {
-    if (streaming) return
-    await send(agentApi.runUrl(sessionId), null).catch(console.error)
-  }
-
   const onClose = async () => {
     await agentApi.closeSession(sessionId)
-    onClosed?.()
+    onClosed()
   }
 
   return (
     <div className="flex flex-col h-full">
       <header className="flex items-center justify-between p-3 border-b border-neutral-200 text-sm">
-        <span className="font-medium">Agent 对话</span>
-        <div className="flex gap-2">
-          <button
-            onClick={onRun}
-            disabled={streaming}
-            className="px-3 py-1 text-xs rounded bg-amber-500 text-white disabled:opacity-50"
-          >
-            开始改写本批
-          </button>
-          <button
-            onClick={onClose}
-            className="px-3 py-1 text-xs rounded border border-neutral-300"
-          >
-            关闭 session
-          </button>
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{labelFor(session)}</span>
         </div>
+        <button
+          onClick={onClose}
+          className="px-3 py-1 text-xs rounded border border-neutral-300 hover:bg-neutral-50"
+        >
+          结束 session
+        </button>
       </header>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
@@ -78,7 +70,7 @@ export function AgentChat({ sessionId, onClosed }: Props) {
                 onSend()
               }
             }}
-            placeholder={streaming ? '生成中...' : '输入消息（Enter 发送）'}
+            placeholder={streaming ? '生成中...' : '继续追加意见（Enter 发送）'}
             disabled={streaming}
             className="flex-1 px-3 py-2 border border-neutral-300 rounded text-sm resize-none disabled:opacity-50"
             rows={2}
@@ -94,6 +86,20 @@ export function AgentChat({ sessionId, onClosed }: Props) {
       </footer>
     </div>
   )
+}
+
+function labelFor(s: AgentSessionInfo): string {
+  const role = s.role === 'outline' ? '大纲' : '正文'
+  const mode = s.mode === 'generate' ? '生成' : '修改'
+  if (s.scope.from === s.scope.to) return `${mode}${role} 第 ${s.scope.from} 章`
+  return `${mode}${role} ${s.scope.from}-${s.scope.to}`
+}
+
+function buildKickoff(s: AgentSessionInfo): string {
+  if (s.mode === 'generate') {
+    return `请按 system prompt 中的工作流开始为第 ${s.scope.from}-${s.scope.to} 章生成${s.role === 'outline' ? '大纲' : '正文'}。`
+  }
+  return `请按 system prompt 中的修改流程开始处理第 ${s.scope.from} 章。`
 }
 
 function MessageBubble({ m }: { m: AgentMessage }) {
