@@ -23,7 +23,7 @@ export function buildUpdateMapsTool(novelId: string): ToolDefinition {
       'character_entries 的 source 必须是原书角色 canonical_name（read source/characters/ 找）',
       'character_entries 的 target 是改写后的名字：保留性别、大致年龄段、角色功能（mentor/family/antagonist），换姓和名字风格',
       'setting.original_industry 来自 source/meta.md 的 industry 字段；target_industry 由你决定（如果用户没指定）',
-      'setting.key_term_replacements 是核心字段：列出原书所有高频出现的具体术语到改写后术语的对应映射，**至少 8-15 条**——包括但不限于：关键场景类型（药厂 → 灵药园）、武道/修炼术语（铜皮铁骨 → 锻体淬骨）、关键道具类型、组织名、地名、特殊物品。条目越多，正文/大纲改写时撞原文的概率越低',
+      'setting.key_term_replacements 是核心字段：列出原书所有高频出现的具体术语到改写后术语的对应映射，**至少 8-15 条**——包括但不限于：关键【场景类型】（某具体场景 → 同等功能的新场景）、【题材专有术语】（某境界/技能/状态术语 → 同等含义的新术语）、【关键道具类型】、【组织名 / 地名 / 特殊物品】。条目越多，正文/大纲改写时撞原文的概率越低',
     ],
     parameters: Type.Object({
       character_entries: Type.Optional(
