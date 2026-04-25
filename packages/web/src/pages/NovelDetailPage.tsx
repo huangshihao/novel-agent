@@ -332,16 +332,6 @@ function HooksTab({ novelId }: { novelId: string }) {
             className="rounded border border-neutral-200 bg-white p-3 text-sm flex items-start gap-3"
           >
             <div className="flex flex-col gap-1 shrink-0 mt-0.5">
-              <span
-                className={cn(
-                  'text-xs px-1.5 py-0.5 rounded text-center',
-                  h.type === 'long'
-                    ? 'bg-violet-100 text-violet-800'
-                    : 'bg-sky-100 text-sky-800',
-                )}
-              >
-                {h.type === 'long' ? '长线' : '短线'}
-              </span>
               {cat && (
                 <span
                   className={cn('text-xs px-1.5 py-0.5 rounded text-center', cat.cls)}
