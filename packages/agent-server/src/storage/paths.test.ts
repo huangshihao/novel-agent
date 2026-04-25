@@ -31,4 +31,36 @@ describe('paths', () => {
       expect(m.paths.root()).toBe('/tmp/novel-test')
     })
   })
+
+  it('builds target dir', () => {
+    expect(paths.targetDir('nv-1')).toMatch(/nv-1\/target$/)
+  })
+
+  it('builds target maps.md', () => {
+    expect(paths.targetMaps('nv-1')).toMatch(/nv-1\/target\/maps\.md$/)
+  })
+
+  it('builds target state.md', () => {
+    expect(paths.targetState('nv-1')).toMatch(/nv-1\/target\/state\.md$/)
+  })
+
+  it('builds target outlines dir', () => {
+    expect(paths.targetOutlinesDir('nv-1')).toMatch(/nv-1\/target\/outlines$/)
+  })
+
+  it('builds target outline path with zero-padded number', () => {
+    expect(paths.targetOutline('nv-1', 7)).toMatch(
+      /nv-1\/target\/outlines\/0007\.md$/,
+    )
+  })
+
+  it('builds target chapters dir', () => {
+    expect(paths.targetChaptersDir('nv-1')).toMatch(/nv-1\/target\/chapters$/)
+  })
+
+  it('builds target chapter path with zero-padded number', () => {
+    expect(paths.targetChapter('nv-1', 42)).toMatch(
+      /nv-1\/target\/chapters\/0042\.md$/,
+    )
+  })
 })
