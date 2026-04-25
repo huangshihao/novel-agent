@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
 import { chatApi } from '../lib/chat-api.js'
 import { ChatSidebar } from '../components/ChatSidebar.js'
@@ -9,6 +9,7 @@ import { ArtifactTabs } from '../components/ArtifactTabs.js'
 
 export function RewritePage() {
   const { id = '' } = useParams<{ id: string }>()
+  const qc = useQueryClient()
   const { data: novel } = useQuery({ queryKey: ['novel', id], queryFn: () => api.getNovel(id) })
   const { data: chats } = useQuery({
     queryKey: ['chats', id],
@@ -47,7 +48,14 @@ export function RewritePage() {
           />
         </div>
         <div className="min-w-[500px] flex-1 border-r border-neutral-200">
-          <ChatPanel novelId={id} chatId={chatId} />
+          <ChatPanel
+            novelId={id}
+            chatId={chatId}
+            onChatCreated={(newId) => {
+              setChatId(newId)
+              qc.invalidateQueries({ queryKey: ['chats', id] })
+            }}
+          />
         </div>
         <div className="min-w-[600px] flex-1">
           <ArtifactTabs novelId={id} />

@@ -10,6 +10,7 @@ import { chatApi } from './chat-api.js'
 export interface ChatRuntimeOptions {
   novelId: string
   chatId: string | null
+  onChatCreated?: (chatId: string) => void
 }
 
 interface ToolCallState {
@@ -28,12 +29,17 @@ interface AssistantTurn {
 }
 
 export function useChatRuntime(opts: ChatRuntimeOptions) {
-  const { novelId, chatId } = opts
+  const { novelId, chatId, onChatCreated } = opts
   const [messages, setMessages] = useState<ThreadMessageLike[]>([])
   const [isRunning, setIsRunning] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const activeChatIdRef = useRef<string | null>(chatId)
+  const onChatCreatedRef = useRef(onChatCreated)
+  onChatCreatedRef.current = onChatCreated
 
   useEffect(() => {
+    if (chatId === activeChatIdRef.current) return
+    activeChatIdRef.current = chatId
     setMessages([])
     abortRef.current?.abort()
     abortRef.current = null
@@ -52,7 +58,19 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
 
   const send = useCallback(
     async (text: string) => {
-      if (!chatId) return
+      if (!activeChatIdRef.current) {
+        try {
+          const chat = await chatApi.create(novelId)
+          activeChatIdRef.current = chat.id
+          onChatCreatedRef.current?.(chat.id)
+        } catch (err) {
+          console.error('[chat-runtime] create chat failed:', err)
+          return
+        }
+      }
+      const targetChatId = activeChatIdRef.current
+      if (!targetChatId) return
+
       setMessages((prev) => [
         ...prev,
         { id: `u-${Date.now()}`, role: 'user', content: [{ type: 'text', text }] },
@@ -67,7 +85,7 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
       abortRef.current = ac
       setIsRunning(true)
       try {
-        const resp = await fetch(chatApi.messageUrl(novelId, chatId), {
+        const resp = await fetch(chatApi.messageUrl(novelId, targetChatId), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: text }),
@@ -148,17 +166,18 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
         )
       }
     },
-    [novelId, chatId],
+    [novelId],
   )
 
   const onCancel = useCallback(async () => {
     abortRef.current?.abort()
-    if (chatId) {
+    const cid = activeChatIdRef.current
+    if (cid) {
       try {
-        await chatApi.stop(novelId, chatId)
+        await chatApi.stop(novelId, cid)
       } catch { /* noop */ }
     }
-  }, [novelId, chatId])
+  }, [novelId])
 
   const onNew = useCallback(async (msg: AppendMessage) => {
     if (msg.role !== 'user') return
