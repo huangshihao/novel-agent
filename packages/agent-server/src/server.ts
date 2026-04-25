@@ -4,9 +4,6 @@ import { logger } from 'hono/logger'
 import { healthRoutes } from './routes/health.js'
 import { novelRoutes } from './routes/novel.js'
 
-// 预热 db（触发 schema 建表）
-import './db.js'
-
 const app = new Hono()
 
 app.use('*', cors())
