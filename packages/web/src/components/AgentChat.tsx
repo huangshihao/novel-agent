@@ -15,9 +15,17 @@ export function AgentChat({ session, onClosed }: Props) {
   const [draft, setDraft] = useState('')
 
   useEffect(() => {
-    setMessages([])
+    const initial =
+      session.mode === 'generate'
+        ? session.requirement?.trim()
+        : session.feedback?.trim()
+    setMessages(
+      initial
+        ? [{ id: `u-init-${sessionId}`, role: 'user', content: initial }]
+        : [],
+    )
     send(agentApi.messageUrl(sessionId), '').catch(console.error)
-  }, [sessionId, send, setMessages])
+  }, [sessionId, session.mode, session.requirement, session.feedback, send, setMessages])
 
   const onSend = async () => {
     if (!draft.trim() || streaming) return
@@ -47,10 +55,10 @@ export function AgentChat({ session, onClosed }: Props) {
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
         {messages.map((m) => (
-          <MessageBubble key={m.id} m={m} />
+          <MessageBubble key={m.id} m={m} streaming={streaming} />
         ))}
         {streaming && messages.length === 0 && (
-          <div className="text-neutral-400">等待 agent 开始...</div>
+          <div className="text-neutral-400">连接中...</div>
         )}
       </div>
 
@@ -90,7 +98,9 @@ function labelFor(s: AgentSessionInfo): string {
   return `${mode}${role} ${s.scope.from}-${s.scope.to}`
 }
 
-function MessageBubble({ m }: { m: AgentMessage }) {
+function MessageBubble({ m, streaming }: { m: AgentMessage; streaming?: boolean }) {
+  const isEmptyAssistant =
+    m.role === 'assistant' && !m.content && (!m.tool_calls || m.tool_calls.length === 0)
   return (
     <div
       className={clsx(
@@ -100,6 +110,9 @@ function MessageBubble({ m }: { m: AgentMessage }) {
           : 'bg-neutral-100 text-neutral-900',
       )}
     >
+      {isEmptyAssistant && streaming && (
+        <div className="text-neutral-400 italic">思考中...</div>
+      )}
       {m.content && <div className="whitespace-pre-wrap">{m.content}</div>}
       {m.tool_calls && m.tool_calls.length > 0 && (
         <div className="mt-2 pt-2 border-t border-current/10 space-y-1">
