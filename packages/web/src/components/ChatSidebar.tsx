@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { chatApi } from '../lib/chat-api.js'
+import { useConfirm } from '../lib/use-confirm.js'
 
 interface Props {
   novelId: string
@@ -10,6 +11,7 @@ interface Props {
 
 export function ChatSidebar({ novelId, selectedChatId, onSelect }: Props) {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const { data: chats } = useQuery({
     queryKey: ['chats', novelId],
     queryFn: () => chatApi.list(novelId),
@@ -35,9 +37,33 @@ export function ChatSidebar({ novelId, selectedChatId, onSelect }: Props) {
   })
 
   const onDelete = async (chatId: string) => {
-    if (!confirm('删除这个 chat？历史会一起删掉')) return
+    const ok = await confirm({
+      title: '删除 chat',
+      message: '删除这个 chat？历史会一起删掉。',
+      confirmLabel: '删除',
+      tone: 'danger',
+    })
+    if (!ok) return
     await deleteMut.mutateAsync(chatId)
     if (selectedChatId === chatId) onSelect('')
+  }
+
+  const onSwitch = async (chatId: string) => {
+    if (chatId === selectedChatId) return
+    if (active && active.chatId !== chatId && active.chatId === selectedChatId) {
+      const ok = await confirm({
+        title: '切换 chat',
+        message: '当前 chat 还在运行，要先停掉吗？',
+        confirmLabel: '先停掉',
+        tone: 'primary',
+      })
+      if (!ok) return
+      try {
+        await chatApi.stop(novelId, active.chatId)
+      } catch { /* noop */ }
+      qc.invalidateQueries({ queryKey: ['agent-active', novelId] })
+    }
+    onSelect(chatId)
   }
 
   return (
@@ -62,7 +88,7 @@ export function ChatSidebar({ novelId, selectedChatId, onSelect }: Props) {
                 'group px-3 py-2 border-b border-neutral-200 cursor-pointer text-sm',
                 isSelected ? 'bg-white' : 'hover:bg-neutral-100',
               )}
-              onClick={() => onSelect(c.id)}
+              onClick={() => onSwitch(c.id)}
             >
               <div className="flex items-center gap-2">
                 <span className="flex-1 truncate font-medium">{c.title}</span>
