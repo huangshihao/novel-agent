@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { cn, statusLabel, statusStyle } from '../lib/ui'
+import { useConfirm } from '../lib/use-confirm'
 
 export function NovelListPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const confirm = useConfirm()
 
   const { data: novels, isLoading, error } = useQuery({
     queryKey: ['novels'],
@@ -200,8 +202,14 @@ export function NovelListPage() {
                   {statusLabel[n.status]}
                 </span>
                 <button
-                  onClick={() => {
-                    if (confirm(`删除《${n.title}》？`)) del.mutate(n.id)
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: '删除小说',
+                      message: `确定删除《${n.title}》？此操作不可撤销。`,
+                      confirmLabel: '删除',
+                      tone: 'danger',
+                    })
+                    if (ok) del.mutate(n.id)
                   }}
                   className="text-xs text-neutral-400 hover:text-rose-600"
                 >
