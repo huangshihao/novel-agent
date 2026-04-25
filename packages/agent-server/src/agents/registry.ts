@@ -8,6 +8,8 @@ export interface SessionEntry {
   mode: AgentMode
   scope: { from: number; to: number }
   session: AgentSession
+  requirement?: string
+  feedback?: string
   createdAt: number
 }
 
@@ -41,6 +43,8 @@ export interface SetActiveSessionInput {
   mode: AgentMode
   scope: { from: number; to: number }
   session: AgentSession
+  requirement?: string
+  feedback?: string
 }
 
 export function setActiveSession(input: SetActiveSessionInput): string {
@@ -55,6 +59,8 @@ export function setActiveSession(input: SetActiveSessionInput): string {
     mode: input.mode,
     scope: input.scope,
     session: input.session,
+    requirement: input.requirement,
+    feedback: input.feedback,
     createdAt: Date.now(),
   }
   activeByNovel.set(input.novelId, { kind: 'session', entry })

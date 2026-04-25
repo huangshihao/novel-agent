@@ -109,6 +109,8 @@ export interface AgentSessionInfo {
   role: AgentRole
   mode: AgentMode
   scope: { from: number; to: number }
+  requirement?: string
+  feedback?: string
   created_at: number
 }
 

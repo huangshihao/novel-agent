@@ -19,7 +19,15 @@ export function outlineAgentSystemPrompt(input: OutlineSystemPromptInput): strin
 用户对本批整体需求（请贯穿生成时遵循）：
 ${input.requirement?.trim() ? input.requirement : '（用户未提供具体需求，按默认工作流处理）'}
 
-工作流：
+═══ 先理解用户首条 message ═══
+
+读完用户的首条 message 后，先判断它的性质：
+- 如果是"按默认走" / "无特殊要求" / 直接给具体写作要求 → 进入下面的工作流，开始批量生成
+- 如果用户提了开放性问题、想先确定某些设定（例如"先确定主角金手指"、"你建议怎么改写反派"）→ **先回复用户、跟用户讨论，不要直接调 writeChapterOutline**。等用户在 chat 里给出明确指令后再开始批量执行
+- 不确定时，宁可先问一句澄清，也不要凭猜测开始批量写
+
+═══ 工作流（用户给绿灯后再走） ═══
+
 1. 第一次进入：read source/meta.md / source/characters/（看主要角色）
 2. read target/maps.md（不存在或字段缺失则 updateMaps 生成草案）
    - character_entries：所有 source/characters 里 role !== 'tool' 的角色都要给一个 target 名
@@ -97,7 +105,13 @@ export function writerAgentSystemPrompt(input: WriterSystemPromptInput): string 
 用户对本批整体需求（请遵循）：
 ${input.requirement?.trim() ? input.requirement : '（无特殊要求，按默认工作流写）'}
 
-工作流：
+═══ 先理解用户首条 message ═══
+
+如果用户首条 message 提的是开放性问题（"这章怎么写好看"、"主角性格我还没想好"），先讨论再执行 writeChapter。
+如果是具体执行指令或空指令（"开始写"），按下面的工作流走。
+
+═══ 工作流（用户给绿灯后再走） ═══
+
 1. 调 getChapterContext({number: ${chapterNumber}}) 拿齐 context（大纲 + 置换表 + 最近 3 章 + 角色状态 + 涉及伏笔）
 2. 写正文（中文，3000-5000 字一章为目标）：
    - 严格按 outline.plot 推进剧情

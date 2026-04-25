@@ -96,6 +96,12 @@ function labelFor(s: AgentSessionInfo): string {
 }
 
 function buildKickoff(s: AgentSessionInfo): string {
+  if (s.mode === 'generate' && s.requirement?.trim()) {
+    return s.requirement
+  }
+  if (s.mode === 'revise' && s.feedback?.trim()) {
+    return `（修改第 ${s.scope.from} 章）${s.feedback}`
+  }
   if (s.mode === 'generate') {
     return `请按 system prompt 中的工作流开始为第 ${s.scope.from}-${s.scope.to} 章生成${s.role === 'outline' ? '大纲' : '正文'}。`
   }

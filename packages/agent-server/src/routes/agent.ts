@@ -42,6 +42,8 @@ function sessionToInfo(entry: SessionEntry): AgentSessionInfo {
     role: entry.role,
     mode: entry.mode,
     scope: entry.scope,
+    requirement: entry.requirement,
+    feedback: entry.feedback,
     created_at: entry.createdAt,
   }
 }
@@ -133,6 +135,7 @@ app.post('/:id/outline/start', async (c) => {
     mode: 'generate',
     scope: { from: v.from, to: v.to },
     session,
+    requirement: body.requirement,
   })
   const info = sessionToInfo(getSessionEntry(id)!)
   return c.json(info)
@@ -168,6 +171,7 @@ app.post('/:id/outline/revise', async (c) => {
     mode: 'revise',
     scope: { from: body.number, to: body.number },
     session,
+    feedback: body.feedback,
   })
   return c.json(sessionToInfo(getSessionEntry(id)!))
 })
@@ -237,6 +241,7 @@ app.post('/:id/writer/revise', async (c) => {
     mode: 'revise',
     scope: { from: body.number, to: body.number },
     session,
+    feedback: body.feedback,
   })
   return c.json(sessionToInfo(getSessionEntry(id)!))
 })
@@ -559,8 +564,18 @@ function subscribeChatSession(
         close()
         return
       }
-      default:
+      default: {
+        const t = (evt as { type?: string }).type
+        if (t === 'error' || t === 'agent_error') {
+          const msg =
+            (evt as { error?: { message?: string }; message?: string }).error?.message ??
+            (evt as { message?: string }).message ??
+            `agent error: ${t}`
+          write({ type: 'error', message: msg })
+          close()
+        }
         return
+      }
     }
   })
 }
