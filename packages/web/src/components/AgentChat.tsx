@@ -4,6 +4,11 @@ import { agentApi } from '../lib/agent-api.js'
 import { useAgentStream, type AgentMessage } from '../lib/use-agent-stream.js'
 import clsx from 'clsx'
 
+// Tracks sessions that already had auto-kickoff sent. Module-level so it
+// survives React StrictMode's intentional unmount/remount in dev — without
+// this, the kickoff fires twice and queues two messages on the agent.
+const kickedOff = new Set<string>()
+
 interface Props {
   session: AgentSessionInfo
   onClosed: () => void
@@ -13,16 +18,14 @@ export function AgentChat({ session, onClosed }: Props) {
   const sessionId = session.id
   const { messages, streaming, send, setMessages } = useAgentStream({ sessionId })
   const [draft, setDraft] = useState('')
-  const [autoStarted, setAutoStarted] = useState(false)
 
-  // For freshly-created session: auto-send the initial kickoff to start agent's first turn.
   useEffect(() => {
-    if (autoStarted) return
-    setAutoStarted(true)
+    if (kickedOff.has(sessionId)) return
+    kickedOff.add(sessionId)
     const kickoff = buildKickoff(session)
     setMessages([])
     send(agentApi.messageUrl(sessionId), kickoff).catch(console.error)
-  }, [autoStarted, sessionId, session, send, setMessages])
+  }, [sessionId, session, send, setMessages])
 
   const onSend = async () => {
     if (!draft.trim() || streaming) return
@@ -32,6 +35,7 @@ export function AgentChat({ session, onClosed }: Props) {
   }
 
   const onClose = async () => {
+    kickedOff.delete(sessionId)
     await agentApi.closeSession(sessionId)
     onClosed()
   }
