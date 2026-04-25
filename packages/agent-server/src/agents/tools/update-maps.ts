@@ -19,10 +19,11 @@ export function buildUpdateMapsTool(novelId: string): ToolDefinition {
       'updateMaps({character_entries?, setting?}) - 写置换表（角色映射 + 题材替换）',
     promptGuidelines: [
       '**首次运行时**先 read target/maps.md 看当前状态（如果存在）',
+      '**character_entries 必须覆盖 source/characters/ 下所有 role !== \'tool\' 的角色**——主角 / 配角 / 家人 / 反派 / 师傅都要给 target 名，不能漏。漏了就违反洗稿原则',
       'character_entries 的 source 必须是原书角色 canonical_name（read source/characters/ 找）',
-      'character_entries 的 target 是改写后的名字，由你根据 source role / 行业风格生成；用户后续可改',
-      'setting 的 original_industry 来自 source/meta.md 的 industry 字段；target_industry 由你决定（如果用户没指定）',
-      'setting.key_term_replacements 列出原行业关键名词到新行业的对应映射，5-15 条',
+      'character_entries 的 target 是改写后的名字：保留性别、大致年龄段、角色功能（mentor/family/antagonist），换姓和名字风格',
+      'setting.original_industry 来自 source/meta.md 的 industry 字段；target_industry 由你决定（如果用户没指定）',
+      'setting.key_term_replacements 是核心字段：列出原书所有高频出现的具体术语到改写后术语的对应映射，**至少 8-15 条**——包括但不限于：关键场景类型（药厂 → 灵药园）、武道/修炼术语（铜皮铁骨 → 锻体淬骨）、关键道具类型、组织名、地名、特殊物品。条目越多，正文/大纲改写时撞原文的概率越低',
     ],
     parameters: Type.Object({
       character_entries: Type.Optional(

@@ -21,10 +21,14 @@ export function buildWriteChapterOutlineTool(
     promptSnippet: 'writeChapterOutline({number, ...}) - 写章级大纲（upsert）',
     promptGuidelines: [
       `本批范围：${batch.from}-${batch.to}。number 必须在此范围内`,
-      'plot 是 200-400 字大纲（中文，已应用置换表）',
+      '**洗稿要求**：plot 不能照抄原书剧情。原书该章发生 X，改写要保留 X 的剧情功能（外部资源获取 / 家庭冲突 / 突破瓶颈 / 等等），但换不同的具体载体（场景、道具、对手）',
+      '写 plot 前先在思考里复述原章 key_events 的剧情功能，再设计同功能的替代场景，最后落字',
+      'plot 是 200-400 字大纲（中文，已应用置换表 maps.setting_map.key_term_replacements）',
+      'key_events 列出本章关键事件，每条用替代场景的具体描述（不能与原章 key_events 字面相同）',
       'hooks_to_plant 列本章要新埋的长线伏笔（id 是你自定义的，nhk-001 风格）；hooks_to_payoff 列本章兑现的伏笔 id（必须已在 source/hooks 或 state.new_hooks）',
       'planned_state_changes.character_deaths 里的角色名必须用 character_map.target 形式',
       '本批已写过的章节大纲可通过 read target/outlines/<n>.md 查看',
+      '**支线顺序优化**：如果本章涉及的支线和已写章节的支线无因果依赖（B 不引用 A 的结果），允许调换发生顺序——使改写顺序与原书不同',
     ],
     parameters: Type.Object({
       number: Type.Number(),
