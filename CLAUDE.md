@@ -8,7 +8,8 @@
 |---|---|
 | `packages/shared/src/types.ts` | 跨端 TS 类型（`Novel` / `Chapter` / `Hook` / `HookCategory` / SSE 事件）。改类型后 server + web 都要跟 |
 | `packages/agent-server/src/analyzer.ts` | **核心**：Pass 1 抽取 + Pass 2 聚合 + 结构性钩子合成 + refine。所有 prompt 在这里 |
-| `packages/agent-server/src/db.ts` | SQLite schema + 幂等 `addColumnIfMissing` 迁移。加列就在这加 |
+| `packages/agent-server/src/storage/` | MD + front matter 读写工具：paths / markdown / novel-index / source-writer / source-reader |
+| `data/<novel-id>/source/**.md` | 分析产物（替代原 SQLite）。`source/raw/<n>.txt` 存原文，`source/chapters/<n>.md` 存抽取，`source/{characters,subplots.md,hooks.md,meta.md}` 是聚合产物 |
 | `packages/agent-server/src/routes/novel.ts` | REST + SSE 路由 |
 | `packages/agent-server/src/deepseek-client.ts` | `chatJson<T>()` — JSON 模式包装 |
 | `packages/agent-server/src/chapter-splitter.ts` | 中文章节切分（"第X章" 格式） |
@@ -18,7 +19,7 @@
 
 ## 改动流程
 
-**加新字段**：`shared/types.ts` → `db.ts`（CREATE TABLE + `addColumnIfMissing`）→ `analyzer.ts` 写入 → `routes/novel.ts` 读出 → `lib/api.ts` 类型透传 → UI 展示。漏了 `addColumnIfMissing` 就会在老库上崩。
+**加新字段**：`shared/types.ts` → `storage/source-writer.ts`（写入 + 类型）→ `storage/source-reader.ts`（读出 + body 解析）→ `analyzer.ts` 填值 → `routes/novel.ts` 透传 → `lib/api.ts` 类型透传 → UI 展示。Front matter 新字段不需要迁移脚本（旧 MD 文件读到时是 undefined，按 default 处理）。
 
 **改 prompt**：只改 `analyzer.ts` 里的 prompt 函数。改完用"仅重聚合"端点复验（不消耗 Pass 1 的 token）——见 `analyzer.ts#reaggregate` / `POST /api/novel/:id/reaggregate`。
 
@@ -32,8 +33,7 @@
 - **不加防御性代码**：内部函数信任内部调用者；只在 API 边界校验
 - **不创建 `.md` / 文档文件**，除非用户明确要求
 - **Prompt 通用优先**：示例用抽象形态描述（"某具名配角的真实身份"），**不要**绑死到具体小说的人名/物名——换书就失效
-- **提示词大改前先人工校验**：用 `sqlite3 ~/.novel-agent/data.db` 直接查 `hook` / `chapter_extract` 表看 LLM 实际输出，别凭感觉
-- **幂等迁移**：老库老数据不能崩。新列必须有默认值；如有数据修复 SQL 也写进 `db.ts`（参考 `UPDATE novel SET analyzed_to = analysis_to ...`）
+- **提示词大改前先人工校验**：用 `cat ~/.novel-agent/data/<id>/source/hooks.md`（或 `source/chapters/0001.md`）直接看 LLM 实际输出，别凭感觉
 
 ## 已解决的典型陷阱
 
@@ -49,7 +49,7 @@
 
 ## 不要做的事
 
-- ❌ 在 `runPass2` 里增量插入 `character`/`subplot`/`hook` — 会产生重复
+- ❌ 在 `runPass2` 里增量写 `source/characters/`/`source/subplots.md`/`source/hooks.md` — 重跑前必须先 `wipeSourceAggregates`，否则旧文件会和新文件混杂
 - ❌ 给 prompt 举例时用具体人名 — 换书立刻废
 - ❌ 改 prompt 后直接跑 `continue`（贵）— 先用 `reaggregate`（几乎免费）验证
 - ❌ 悄悄改 `analysis_from/to` 的语义 — UI 多处依赖它是"当前 run 的范围"
