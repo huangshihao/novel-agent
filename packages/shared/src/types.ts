@@ -101,13 +101,36 @@ export type AnalysisEvent =
   | { type: 'error'; message: string }
 
 export type AgentRole = 'outline' | 'writer'
+export type AgentMode = 'generate' | 'revise'
 
 export interface AgentSessionInfo {
   id: string
+  novel_id: string
   role: AgentRole
-  batch: { from: number; to: number }
+  mode: AgentMode
+  scope: { from: number; to: number }
   created_at: number
 }
+
+export type BatchJobStatus = 'running' | 'paused' | 'done' | 'aborted'
+
+export interface BatchJobInfo {
+  id: string
+  novel_id: string
+  requirement: string
+  chapters: number[]
+  cursor: number
+  completed: number[]
+  failed: number[]
+  current: number | null
+  status: BatchJobStatus
+  error?: string
+  created_at: number
+}
+
+export type ActiveTask =
+  | { kind: 'session'; session: AgentSessionInfo }
+  | { kind: 'batch'; batch: BatchJobInfo }
 
 export type AgentEvent =
   | { type: 'message.delta'; content: string }
@@ -116,6 +139,12 @@ export type AgentEvent =
   | { type: 'tool.result'; name: string; result: unknown }
   | { type: 'done' }
   | { type: 'error'; message: string }
+  | { type: 'batch.progress'; completed: number; total: number; current: number | null }
+  | { type: 'batch.worker_start'; chapter: number }
+  | { type: 'batch.worker_end'; chapter: number; ok: boolean; error?: string }
+  | { type: 'batch.done' }
+  | { type: 'batch.aborted' }
+  | { type: 'batch.paused'; chapter: number; error: string }
 
 // Target (rewrite) records — shared between agent-server storage and web client
 export interface CharacterMapEntry {
