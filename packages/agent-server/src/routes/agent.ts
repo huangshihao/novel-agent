@@ -21,6 +21,7 @@ import {
 } from '../storage/chat-store.js'
 import { loadChatHistoryForUi } from '../storage/chat-history.js'
 import { readNovelIndex } from '../storage/novel-index.js'
+import { generateChatTitle } from '../lib/title-generator.js'
 
 const app = new Hono()
 
@@ -117,6 +118,14 @@ app.post('/:id/chats/:cid/message', async (c) => {
 
   if (content.trim()) {
     await touchChatLastMsg(novelId, chatId, content.trim())
+    if (chat.title === '新对话') {
+      void generateChatTitle(content.trim())
+        .then((t) => {
+          if (t) return updateChatTitle(novelId, chatId, t)
+          return null
+        })
+        .catch((e) => console.error('[auto-title]', e))
+    }
   }
 
   return runWithStream(
