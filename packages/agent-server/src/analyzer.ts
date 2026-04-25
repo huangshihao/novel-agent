@@ -450,6 +450,60 @@ ${JSON.stringify(chapters, null, 2)}
 `
 }
 
+function metaPrompt(input: {
+  title: string
+  chapter_count: number
+  chapters: { number: number; summary: string }[]
+  characters: { name: string; description: string }[]
+}): string {
+  return `下面是一部中文网文的每章摘要和主要角色。请抽取**改写者所需的题材/世界观元数据**。这些元数据决定改写时哪些可以被整体置换（如"机械工厂" → "私房菜餐厅"）。
+
+要求：
+1. **industry**（行业/职业领域）：主角在书中赖以谋生 / 进步的核心活动领域。一句话，越具体越好。
+   - 例："开机械加工厂"、"经营茶艺馆"、"修仙练气"、"星际舰队学院学员"
+2. **era**（时代/背景）：现代 / 古代 / 民国 / 未来 / 修真位面 / 仙侠玄幻 等
+3. **world_rules**（世界观规则）：3-8 条这个世界**有别于现实**的硬规则。如果是纯现实题材就给空数组。
+   - 例："灵气复苏（现代社会能修炼）"、"境界划分：练气/筑基/金丹/元婴"、"凡人不知有修士"
+4. **key_terms**（关键名词）：5-15 个改写时**必须替换**的题材专有词（如果换行业的话）
+   - 例：题材是"开机械工厂"时 = ["机床", "车间", "订单", "客户", "工艺图纸"]
+5. **genre_tags**（题材标签）：2-5 个，从这些里选：都市 / 修仙 / 玄幻 / 穿越 / 重生 / 末世 / 星际 / 历史 / 系统 / 种田 / 言情 / 悬疑 / 武侠 / 仙侠 / 网游 / 科幻
+6. **style_tags**（文风标签）：2-5 个自由文本，描述写作风格特点（"快节奏"、"对白多"、"口语化"、"战斗描写细致"、"幽默"、"严肃"等）
+7. **summary**（一段总览）：100-200 字，主线一句话 + 主角一句话 + 题材定位一句话
+
+严格 JSON 输出：
+
+{
+  "industry": "...",
+  "era": "...",
+  "world_rules": ["..."],
+  "key_terms": ["...", "..."],
+  "genre_tags": ["...", "..."],
+  "style_tags": ["...", "..."],
+  "summary": "..."
+}
+
+输入：
+书名：${input.title}
+总章数：${input.chapter_count}
+
+主要角色（${input.characters.length} 人）：
+${JSON.stringify(input.characters, null, 2)}
+
+章节摘要（${input.chapters.length} 章）：
+${JSON.stringify(input.chapters, null, 2)}
+`
+}
+
+interface NovelMetaExtract {
+  industry: string
+  era: string
+  world_rules: string[]
+  key_terms: string[]
+  genre_tags: string[]
+  style_tags: string[]
+  summary: string
+}
+
 // ─── 工具 ─────────────────────────────────────────────────────────────────
 
 function clip(text: string, maxChars: number): string {
