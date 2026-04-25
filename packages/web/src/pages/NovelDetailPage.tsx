@@ -81,7 +81,7 @@ export function NovelDetailPage() {
         </div>
         {novel.status === 'ready' && (
           <Link
-            to={`/novel/${id}/rewrite`}
+            to={`/novels/${id}/rewrite`}
             className="px-3 py-1 text-xs rounded bg-amber-500 text-white"
           >
             去改写 →

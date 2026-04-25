@@ -24,7 +24,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <NovelListPage /> },
       { path: 'novels/:id', element: <NovelDetailPage /> },
-      { path: 'novel/:id/rewrite', element: <RewritePage /> },
+      { path: 'novels/:id/rewrite', element: <RewritePage /> },
     ],
   },
 ])

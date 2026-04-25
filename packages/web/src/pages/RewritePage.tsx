@@ -34,7 +34,7 @@ export function RewritePage() {
   return (
     <div className="h-screen flex flex-col">
       <header className="border-b border-neutral-200 px-6 py-3 flex items-center gap-4">
-        <Link to={`/novel/${id}`} className="text-sm text-neutral-500 hover:underline">
+        <Link to={`/novels/${id}`} className="text-sm text-neutral-500 hover:underline">
           ← {novel.title}
         </Link>
         <div className="flex-1" />
