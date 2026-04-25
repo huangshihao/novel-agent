@@ -1,124 +1,65 @@
 import type { AgentSession } from '@mariozechner/pi-coding-agent'
-import type { AgentRole, AgentMode } from '@novel-agent/shared'
+import type { ActiveTask } from '@novel-agent/shared'
 
-export interface SessionEntry {
-  id: string
+export interface ChatEntry {
   novelId: string
-  role: AgentRole
-  mode: AgentMode
-  scope: { from: number; to: number }
+  chatId: string
   session: AgentSession
-  requirement?: string
-  feedback?: string
-  createdAt: number
+  isStreaming: boolean
 }
 
-interface BatchOwner {
-  dispose(): void
-}
+const activeByNovel = new Map<string, ChatEntry>()
 
-export interface BatchEntry {
-  id: string
+export interface ClaimChatInput {
   novelId: string
-  batch: BatchOwner
-  createdAt: number
-}
-
-type Active =
-  | { kind: 'session'; entry: SessionEntry }
-  | { kind: 'batch'; entry: BatchEntry }
-  | null
-
-const activeByNovel = new Map<string, Exclude<Active, null>>()
-const sessionsById = new Map<string, SessionEntry>()
-const batchesById = new Map<string, BatchEntry>()
-
-function genId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-export interface SetActiveSessionInput {
-  novelId: string
-  role: AgentRole
-  mode: AgentMode
-  scope: { from: number; to: number }
+  chatId: string
   session: AgentSession
-  requirement?: string
-  feedback?: string
 }
 
-export function setActiveSession(input: SetActiveSessionInput): string {
-  if (activeByNovel.has(input.novelId)) {
-    throw new Error('already_active')
+export function claimChat(input: ClaimChatInput): ChatEntry {
+  const existing = activeByNovel.get(input.novelId)
+  if (existing && existing.chatId !== input.chatId) {
+    throw new Error(`another_chat_active:${existing.chatId}`)
   }
-  const id = genId('sess')
-  const entry: SessionEntry = {
-    id,
+  const entry: ChatEntry = {
     novelId: input.novelId,
-    role: input.role,
-    mode: input.mode,
-    scope: input.scope,
+    chatId: input.chatId,
     session: input.session,
-    requirement: input.requirement,
-    feedback: input.feedback,
-    createdAt: Date.now(),
+    isStreaming: false,
   }
-  activeByNovel.set(input.novelId, { kind: 'session', entry })
-  sessionsById.set(id, entry)
-  return id
-}
-
-export interface SetActiveBatchInput {
-  novelId: string
-  batchId?: string
-  batch: BatchOwner
-}
-
-export function setActiveBatch(input: SetActiveBatchInput): string {
-  if (activeByNovel.has(input.novelId)) {
-    throw new Error('already_active')
+  if (existing) {
+    try { existing.session.dispose() } catch { /* ignore */ }
   }
-  const id = input.batchId ?? genId('batch')
-  const entry: BatchEntry = {
-    id,
-    novelId: input.novelId,
-    batch: input.batch,
-    createdAt: Date.now(),
-  }
-  activeByNovel.set(input.novelId, { kind: 'batch', entry })
-  batchesById.set(id, entry)
-  return id
+  activeByNovel.set(input.novelId, entry)
+  return entry
 }
 
-export function getActiveTask(novelId: string): Active {
-  return activeByNovel.get(novelId) ?? null
+export function getActiveChat(novelId: string): ActiveTask {
+  const e = activeByNovel.get(novelId)
+  return e ? { chatId: e.chatId } : null
 }
 
-export function getSessionEntry(sessionId: string): SessionEntry | undefined {
-  return sessionsById.get(sessionId)
+export function getChatEntry(novelId: string, chatId: string): ChatEntry | null {
+  const e = activeByNovel.get(novelId)
+  if (!e || e.chatId !== chatId) return null
+  return e
 }
 
-export function getBatchEntry(batchId: string): BatchEntry | undefined {
-  return batchesById.get(batchId)
+export function setStreaming(novelId: string, chatId: string, value: boolean): void {
+  const e = activeByNovel.get(novelId)
+  if (e && e.chatId === chatId) e.isStreaming = value
 }
 
-export function clearActiveTask(novelId: string): void {
-  const a = activeByNovel.get(novelId)
-  if (!a) return
-  try {
-    if (a.kind === 'session') a.entry.session.dispose()
-    else a.entry.batch.dispose()
-  } catch {
-    /* ignore */
-  }
+export function releaseChat(novelId: string): void {
+  const e = activeByNovel.get(novelId)
+  if (!e) return
+  try { e.session.dispose() } catch { /* ignore */ }
   activeByNovel.delete(novelId)
-  if (a.kind === 'session') sessionsById.delete(a.entry.id)
-  else batchesById.delete(a.entry.id)
 }
 
-// test-only
 export function __clearAll(): void {
+  for (const e of activeByNovel.values()) {
+    try { e.session.dispose() } catch { /* ignore */ }
+  }
   activeByNovel.clear()
-  sessionsById.clear()
-  batchesById.clear()
 }

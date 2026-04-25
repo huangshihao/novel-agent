@@ -1,98 +1,46 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import {
-  setActiveSession,
-  setActiveBatch,
-  getActiveTask,
-  clearActiveTask,
-  getSessionEntry,
-  getBatchEntry,
-  __clearAll,
-} from './registry.js'
+import { __clearAll, claimChat, releaseChat, getActiveChat, getChatEntry } from './registry.js'
 import type { AgentSession } from '@mariozechner/pi-coding-agent'
 
-const fakeSession = { dispose() {} } as unknown as AgentSession
-const fakeBatch = { dispose() {} } as { dispose(): void }
+const fakeSession = (): AgentSession => ({
+  dispose: () => {},
+  subscribe: () => () => {},
+  sendUserMessage: async () => {},
+} as unknown as AgentSession)
 
 beforeEach(() => __clearAll())
 
-describe('registry single-active', () => {
-  it('sets and gets active session', () => {
-    const id = setActiveSession({
-      novelId: 'n1',
-      role: 'outline',
-      mode: 'generate',
-      scope: { from: 1, to: 10 },
-      session: fakeSession,
-    })
-    const active = getActiveTask('n1')
-    expect(active?.kind).toBe('session')
-    expect(active?.kind === 'session' && active.entry.role).toBe('outline')
-    expect(getSessionEntry(id)?.novelId).toBe('n1')
+describe('registry (chat-keyed)', () => {
+  it('claimChat sets active and getActiveChat reads it', () => {
+    claimChat({ novelId: 'n1', chatId: 'c1', session: fakeSession() })
+    expect(getActiveChat('n1')).toEqual({ chatId: 'c1' })
   })
 
-  it('rejects new active when one exists', () => {
-    setActiveSession({
-      novelId: 'n1',
-      role: 'outline',
-      mode: 'generate',
-      scope: { from: 1, to: 10 },
-      session: fakeSession,
-    })
-    expect(() =>
-      setActiveSession({
-        novelId: 'n1',
-        role: 'writer',
-        mode: 'generate',
-        scope: { from: 1, to: 1 },
-        session: fakeSession,
-      }),
-    ).toThrow(/already_active/)
-    expect(() =>
-      setActiveBatch({ novelId: 'n1', batchId: 'b1', batch: fakeBatch }),
-    ).toThrow(/already_active/)
+  it('claimChat throws when another chat is active for same novel', () => {
+    claimChat({ novelId: 'n1', chatId: 'c1', session: fakeSession() })
+    expect(() => claimChat({ novelId: 'n1', chatId: 'c2', session: fakeSession() })).toThrow(/active/)
   })
 
-  it('different novels are independent', () => {
-    setActiveSession({
-      novelId: 'n1',
-      role: 'outline',
-      mode: 'generate',
-      scope: { from: 1, to: 10 },
-      session: fakeSession,
-    })
-    setActiveSession({
-      novelId: 'n2',
-      role: 'outline',
-      mode: 'generate',
-      scope: { from: 1, to: 10 },
-      session: fakeSession,
-    })
-    expect(getActiveTask('n1')).toBeTruthy()
-    expect(getActiveTask('n2')).toBeTruthy()
+  it('claimChat for same chatId is idempotent', () => {
+    const s = fakeSession()
+    claimChat({ novelId: 'n1', chatId: 'c1', session: s })
+    expect(() => claimChat({ novelId: 'n1', chatId: 'c1', session: fakeSession() })).not.toThrow()
   })
 
-  it('clearActiveTask disposes session', () => {
-    let disposed = false
-    const session = { dispose() { disposed = true } } as unknown as AgentSession
-    setActiveSession({
-      novelId: 'n1',
-      role: 'outline',
-      mode: 'generate',
-      scope: { from: 1, to: 10 },
-      session,
-    })
-    clearActiveTask('n1')
-    expect(disposed).toBe(true)
-    expect(getActiveTask('n1')).toBeNull()
+  it('releaseChat removes active', () => {
+    claimChat({ novelId: 'n1', chatId: 'c1', session: fakeSession() })
+    releaseChat('n1')
+    expect(getActiveChat('n1')).toBeNull()
   })
 
-  it('clearActiveTask disposes batch', () => {
-    let disposed = false
-    const batch = { dispose() { disposed = true } }
-    setActiveBatch({ novelId: 'n2', batchId: 'b1', batch })
-    clearActiveTask('n2')
-    expect(disposed).toBe(true)
-    expect(getActiveTask('n2')).toBeNull()
-    expect(getBatchEntry('b1')).toBeUndefined()
+  it('different novels can each have an active chat simultaneously', () => {
+    claimChat({ novelId: 'n1', chatId: 'c1', session: fakeSession() })
+    claimChat({ novelId: 'n2', chatId: 'c2', session: fakeSession() })
+    expect(getActiveChat('n1')).toEqual({ chatId: 'c1' })
+    expect(getActiveChat('n2')).toEqual({ chatId: 'c2' })
+  })
+
+  it('getChatEntry returns null for unknown', () => {
+    expect(getChatEntry('n1', 'c1')).toBeNull()
   })
 })
