@@ -99,3 +99,20 @@ export type AnalysisEvent =
   | { type: 'status'; status: NovelStatus }
   | { type: 'done' }
   | { type: 'error'; message: string }
+
+export type AgentRole = 'outline' | 'writer'
+
+export interface AgentSessionInfo {
+  id: string
+  role: AgentRole
+  batch: { from: number; to: number }
+  created_at: number
+}
+
+export type AgentEvent =
+  | { type: 'message.delta'; content: string }
+  | { type: 'message.complete'; content: string }
+  | { type: 'tool.call'; name: string; params: unknown }
+  | { type: 'tool.result'; name: string; result: unknown }
+  | { type: 'done' }
+  | { type: 'error'; message: string }
