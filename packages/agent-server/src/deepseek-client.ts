@@ -72,14 +72,22 @@ export class DeepSeekClient {
 
         if (resp.ok) {
           const json = (await resp.json()) as {
-            choices?: { message?: { content?: string } }[]
+            choices?: { finish_reason?: string; message?: { content?: string } }[]
           }
-          const content = json.choices?.[0]?.message?.content
+          const choice = json.choices?.[0]
+          const content = choice?.message?.content
           if (typeof content !== 'string') {
             throw new DeepSeekError(
               'malformed response (no message.content)',
               200,
               JSON.stringify(json).slice(0, 500),
+            )
+          }
+          if (choice?.finish_reason === 'length') {
+            throw new DeepSeekError(
+              'truncated response (finish_reason=length)',
+              200,
+              content.slice(0, 500),
             )
           }
           return content

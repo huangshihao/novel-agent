@@ -26,7 +26,7 @@ import type {
 } from '@novel-agent/shared'
 
 const BATCH_SIZE = 5
-const RHYTHM_BATCH_SIZE = 3
+const RHYTHM_BATCH_SIZE = 1
 const MAX_CHAPTER_CHARS = 1500
 const DEFAULT_CONCURRENCY = 3
 
