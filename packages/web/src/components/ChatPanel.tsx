@@ -7,7 +7,6 @@ import {
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useChatRuntime } from '../lib/chat-runtime.js'
-import { Collapsible } from './Collapsible.js'
 import {
   ReadToolUI,
   LsToolUI,
@@ -17,6 +16,7 @@ import {
   GetChapterContextToolUI,
   GetOutlineContextToolUI,
   WriteChapterToolUI,
+  ToolGroupUI,
 } from './tool-cards/index.js'
 
 interface Props {
@@ -40,41 +40,84 @@ function AssistantTextPart() {
     <MarkdownTextPrimitive
       smooth
       remarkPlugins={[remarkGfm]}
-      className="text-sm text-neutral-800 leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&>p]:my-1.5 [&>ul]:my-1.5 [&>ul]:pl-5 [&>ul]:list-disc [&>ol]:my-1.5 [&>ol]:pl-5 [&>ol]:list-decimal [&>li]:my-0.5 [&_strong]:font-semibold [&_em]:italic [&_del]:line-through [&_code]:rounded [&_code]:bg-neutral-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[12px] [&_pre]:my-2 [&_pre]:rounded [&_pre]:bg-neutral-900 [&_pre]:p-3 [&_pre]:text-xs [&_pre>code]:bg-transparent [&_pre>code]:p-0 [&_pre>code]:text-neutral-100 [&>h1]:text-base [&>h1]:font-semibold [&>h1]:my-2 [&>h2]:text-sm [&>h2]:font-semibold [&>h2]:my-2 [&>h3]:text-sm [&>h3]:font-semibold [&>h3]:my-1.5 [&>blockquote]:border-l-2 [&>blockquote]:border-neutral-300 [&>blockquote]:pl-3 [&>blockquote]:text-neutral-600 [&_a]:text-blue-600 [&_a]:underline [&_table]:my-2 [&_table]:w-full [&_table]:text-xs [&_table]:border-collapse [&_th]:border [&_th]:border-neutral-300 [&_th]:bg-neutral-100 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-neutral-200 [&_td]:px-2 [&_td]:py-1 [&_td]:align-top [&_hr]:my-3 [&_hr]:border-neutral-200"
+      className="text-[15px] leading-7 text-neutral-900 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&>p]:my-2 [&>ul]:my-2 [&>ul]:pl-5 [&>ul]:list-disc [&>ol]:my-2 [&>ol]:pl-5 [&>ol]:list-decimal [&>li]:my-0.5 [&_strong]:font-semibold [&_em]:italic [&_del]:line-through [&_code]:rounded [&_code]:bg-neutral-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[13px] [&_pre]:my-2 [&_pre]:rounded [&_pre]:bg-neutral-900 [&_pre]:p-3 [&_pre]:text-xs [&_pre>code]:bg-transparent [&_pre>code]:p-0 [&_pre>code]:text-neutral-100 [&>h1]:text-lg [&>h1]:font-semibold [&>h1]:my-2 [&>h2]:text-base [&>h2]:font-semibold [&>h2]:my-2 [&>h3]:text-base [&>h3]:font-semibold [&>h3]:my-1.5 [&>blockquote]:border-l-2 [&>blockquote]:border-neutral-300 [&>blockquote]:pl-3 [&>blockquote]:text-neutral-600 [&_a]:text-blue-600 [&_a]:underline [&_table]:my-2 [&_table]:w-full [&_table]:text-xs [&_table]:border-collapse [&_th]:border [&_th]:border-neutral-300 [&_th]:bg-neutral-100 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-neutral-200 [&_td]:px-2 [&_td]:py-1 [&_td]:align-top [&_hr]:my-3 [&_hr]:border-neutral-200"
     />
   )
 }
 
-function AssistantReasoningPart(props: { text: string; status: { type: string } }) {
-  const running = props.status?.type === 'running'
-  const text = props.text ?? ''
-  if (!running && !text.trim()) return null
+function BrainIcon() {
   return (
-    <Collapsible
-      className="my-1 rounded border border-neutral-200 bg-neutral-50 text-xs overflow-hidden"
-      headerClassName="px-3 py-1.5 hover:bg-neutral-100/60"
-      contentClassName="px-3 pb-2 border-t border-neutral-200"
-      forceOpen={running ? true : undefined}
-      summary={
-        <span className="flex items-center gap-2 text-neutral-500">
-          <span className="text-neutral-700">思考</span>
-          {running && <span className="text-amber-600">进行中...</span>}
-        </span>
-      }
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.7"
     >
-      <pre className="whitespace-pre-wrap break-words font-sans text-[12px] text-neutral-600 leading-relaxed pt-1">
-        {text}
-      </pre>
-    </Collapsible>
+      <path d="M9.3 4.5a3.2 3.2 0 0 0-3.1 4 3.7 3.7 0 0 0-.8 6.1 3.4 3.4 0 0 0 4.5 4.3" />
+      <path d="M14.7 4.5a3.2 3.2 0 0 1 3.1 4 3.7 3.7 0 0 1 .8 6.1 3.4 3.4 0 0 1-4.5 4.3" />
+      <path d="M12 5.5v13" />
+      <path d="M8.2 10.2c1.4-.1 2.5.5 3.8 1.6" />
+      <path d="M15.8 10.2c-1.4-.1-2.5.5-3.8 1.6" />
+      <path d="M8.4 14.8c1.2.2 2.3-.1 3.6-1" />
+      <path d="M15.6 14.8c-1.2.2-2.3-.1-3.6-1" />
+    </svg>
+  )
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="M4 6l4 4 4-4" />
+    </svg>
+  )
+}
+
+function AssistantReasoningPart(props: { text: string; status: { type: string } }) {
+  const text = props.text ?? ''
+  const running = props.status?.type === 'running'
+  if (!running && !text.trim()) return null
+
+  return (
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-[#65758f] transition-colors hover:text-[#4f6078] [&::-webkit-details-marker]:hidden">
+        <BrainIcon />
+        <span>{running ? '思考中' : '思考'}</span>
+        <span className="transition-transform group-open:rotate-180">
+          <ChevronDownIcon />
+        </span>
+      </summary>
+      {text.trim() && (
+        <pre className="mt-2 whitespace-pre-wrap break-words rounded-md bg-neutral-50 px-3 py-2 font-sans text-xs leading-relaxed text-neutral-600">
+          {text}
+        </pre>
+      )}
+    </details>
   )
 }
 
 function AssistantMessage() {
   return (
-    <MessagePrimitive.Root className="flex justify-start my-2">
-      <div className="max-w-[85%] space-y-1 rounded-[18px] rounded-bl-md border border-[var(--line)] bg-[rgba(255,255,252,0.78)] px-4 py-2 text-sm shadow-sm">
+    <MessagePrimitive.Root className="my-5 flex justify-start">
+      <div className="w-full max-w-[760px] space-y-4 px-1">
         <MessagePrimitive.Parts
-          components={{ Text: AssistantTextPart, Reasoning: AssistantReasoningPart }}
+          components={{
+            Text: AssistantTextPart,
+            Reasoning: AssistantReasoningPart,
+            ToolGroup: ToolGroupUI,
+          }}
         />
       </div>
     </MessagePrimitive.Root>
@@ -116,7 +159,7 @@ export function ChatPanel({ novelId, chatId, onChatCreated }: Props) {
       <GetOutlineContextToolUI />
       <WriteChapterToolUI />
       <ThreadPrimitive.Root className="flex flex-col h-full">
-        <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-4">
+        <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto bg-[rgba(255,255,252,0.58)] px-6 py-5">
           <ThreadPrimitive.Empty>
             <div className="flex h-full items-center justify-center">
               <div className="surface-tight max-w-sm px-5 py-4 text-center text-sm text-[var(--muted)]">
