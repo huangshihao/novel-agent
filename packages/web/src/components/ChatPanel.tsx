@@ -131,7 +131,7 @@ export function ChatPanel({ novelId, chatId, onChatCreated }: Props) {
             }}
           />
         </ThreadPrimitive.Viewport>
-        <div className="flex items-end gap-2 border-t ink-rule bg-[rgba(250,249,244,0.9)] p-3">
+        <div className="flex items-stretch gap-2 border-t ink-rule bg-[rgba(250,249,244,0.9)] p-3">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -140,13 +140,13 @@ export function ChatPanel({ novelId, chatId, onChatCreated }: Props) {
             onCompositionEnd={() => { composingRef.current = false }}
             placeholder="Enter 发送，Shift+Enter 换行"
             rows={2}
-            className="flex-1 resize-none rounded-md border border-[var(--line-strong)] bg-[rgba(255,255,252,0.86)] px-3 py-2 text-sm outline-none focus:border-[var(--ink)]"
+            className="h-14 flex-1 resize-none rounded-md border border-[var(--line-strong)] bg-[rgba(255,255,252,0.86)] px-3 py-2 text-sm outline-none focus:border-[var(--ink)]"
           />
           {isRunning ? (
             <button
               type="button"
               onClick={() => void cancel()}
-              className="btn-secondary px-4 py-2 text-sm"
+              className="btn-secondary h-14 px-4 text-sm"
             >
               停止
             </button>
@@ -155,7 +155,7 @@ export function ChatPanel({ novelId, chatId, onChatCreated }: Props) {
               type="button"
               onClick={submit}
               disabled={!draft.trim()}
-              className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
+              className="btn-primary h-14 px-4 text-sm disabled:opacity-50"
             >
               发送
             </button>
