@@ -21,6 +21,7 @@ export function buildGetChapterContextTool(novelId: string): ToolDefinition {
       '返回的 maps.character_map 是写正文时人名的唯一来源',
       '返回的 alive_status 里 alive===false 的角色不能在正文里有动作（writeChapter 会硬拒）',
       '返回的 source.writing_rhythm 决定本章节奏：beat_sequence 走顺序、emotional_curve 走情绪、text_composition 走配比、reader_attention_design 走开头/章末钩子',
+      '返回的 hook_ledger 是当前钩子账本：优先处理 overdue=true 的钩子，正文必须兑现 outline.hooks_to_payoff，不能新增未登记的假悬念',
       '返回的 source.originality_risks 是改写时**绝对不能照搬**的标志性桥段载体',
     ],
     parameters: Type.Object({
@@ -58,6 +59,37 @@ export function buildGetChapterContextTool(novelId: string): ToolDefinition {
         ...outline.hooks_to_plant.map((id) => ({ ...(hooksMap.get(id) ?? { id, description: '' }), action: 'plant' as const })),
         ...outline.hooks_to_payoff.map((id) => ({ ...(hooksMap.get(id) ?? { id, description: '' }), action: 'payoff' as const })),
       ]
+      const hook_ledger = [
+        ...sourceHooks
+          .filter((h) => state?.hooks[h.id]?.status !== 'paid_off')
+          .map((h) => ({
+            id: h.id,
+            type: h.category,
+            description: h.description,
+            planted_chapter: h.planted_chapter,
+            expected_payoff_chapter: h.payoff_chapter,
+            payoff_plan: '',
+            source: 'source' as const,
+            open_chapters: Math.max(0, number - h.planted_chapter),
+            overdue:
+              typeof h.payoff_chapter === 'number' && h.payoff_chapter < number,
+          })),
+        ...(state?.new_hooks ?? [])
+          .filter((h) => h.status === 'open')
+          .map((h) => ({
+            id: h.id,
+            type: h.type ?? null,
+            description: h.description,
+            planted_chapter: h.planted_chapter,
+            expected_payoff_chapter: h.expected_payoff_chapter,
+            payoff_plan: h.payoff_plan ?? '',
+            source: 'new' as const,
+            open_chapters: Math.max(0, number - h.planted_chapter),
+            overdue:
+              typeof h.expected_payoff_chapter === 'number' &&
+              h.expected_payoff_chapter < number,
+          })),
+      ]
 
       const sourceChapter = await readSourceChapter(novelId, outline.source_chapter_ref)
 
@@ -67,6 +99,7 @@ export function buildGetChapterContextTool(novelId: string): ToolDefinition {
         recent_chapters: recent,
         involved_characters,
         involved_hooks,
+        hook_ledger,
         source: sourceChapter
           ? {
               chapter_ref: sourceChapter.number,

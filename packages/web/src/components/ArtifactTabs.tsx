@@ -22,16 +22,16 @@ export function ArtifactTabs({ novelId }: Props) {
   const [tab, setTab] = useState<Tab>('maps')
   return (
     <div className="flex flex-col h-full">
-      <nav className="flex gap-1 border-b border-neutral-200 bg-neutral-50 px-2">
+      <nav className="flex gap-1 border-b ink-rule bg-[rgba(250,249,244,0.82)] px-3">
         {TABS.map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
             className={clsx(
-              'px-4 py-2 text-sm border-b-2 -mb-px',
+              'px-4 py-2.5 text-sm border-b-2 -mb-px transition-colors',
               tab === key
-                ? 'border-amber-500 text-amber-700'
-                : 'border-transparent text-neutral-500 hover:text-neutral-700',
+                ? 'border-[var(--accent)] text-[var(--ink)]'
+                : 'border-transparent text-[var(--muted)] hover:text-[var(--ink)]',
             )}
           >
             {label}

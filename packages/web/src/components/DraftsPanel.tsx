@@ -76,7 +76,7 @@ export function DraftsPanel({ novelId }: Props) {
 
   return (
     <div className="flex h-full">
-      <aside className="w-64 border-r border-neutral-200 overflow-y-auto">
+      <aside className="w-64 overflow-y-auto border-r ink-rule bg-[rgba(250,249,244,0.52)]">
         <ul>
           {!drafts?.length && (
             <li className="text-xs text-neutral-400 p-4">
@@ -87,8 +87,10 @@ export function DraftsPanel({ novelId }: Props) {
             <li
               key={d.number}
               className={clsx(
-                'border-b border-neutral-100',
-                selected === d.number ? 'bg-amber-50' : 'hover:bg-neutral-50',
+                'border-b border-[var(--line)]',
+                selected === d.number
+                  ? 'bg-[rgba(242,223,201,0.68)] shadow-[inset_3px_0_0_var(--accent)]'
+                  : 'hover:bg-[rgba(255,255,252,0.62)]',
               )}
             >
               <button
@@ -118,15 +120,15 @@ function DraftDetail({ novelId, number }: { novelId: string; number: number }) {
   if (!d) return <p className="text-sm text-neutral-400">加载中...</p>
 
   return (
-    <article className="prose prose-neutral max-w-none">
+    <article className="surface-tight max-w-none p-6">
       <HoverCopy text={d.title} className="mb-6 -mx-2 px-2 py-1 rounded">
-        <h1 className="text-2xl font-semibold mb-1">{d.title}</h1>
+        <h1 className="mb-1 text-2xl font-semibold">{d.title}</h1>
         <div className="text-xs text-neutral-500">
           第 {d.number} 章 · {d.word_count} 字 · {new Date(d.written_at).toLocaleString('zh-CN')}
         </div>
       </HoverCopy>
       <HoverCopy text={d.content} className="-mx-2 px-2 py-1 rounded">
-        <div className="whitespace-pre-wrap leading-loose text-base">{d.content}</div>
+        <div className="whitespace-pre-wrap text-base leading-loose">{d.content}</div>
       </HoverCopy>
     </article>
   )

@@ -10,7 +10,7 @@ export function MapsPanel({ novelId }: { novelId: string }) {
 
   if (!maps) {
     return (
-      <div className="text-sm text-neutral-400 p-4">
+      <div className="p-4 text-sm text-[var(--muted)]">
         还没有置换表。在右侧对话里让 agent 生成草案（如"生成置换表"）。
       </div>
     )
@@ -19,14 +19,14 @@ export function MapsPanel({ novelId }: { novelId: string }) {
   return (
     <div className="h-full overflow-y-auto space-y-6 p-4">
       <section>
-        <h3 className="font-medium mb-3 text-sm text-neutral-700">角色置换</h3>
-        <table className="w-full text-sm border border-neutral-200 rounded">
-          <thead className="bg-neutral-50">
+        <h3 className="mb-3 text-sm font-semibold text-[var(--ink)]">角色置换</h3>
+        <table className="w-full overflow-hidden rounded-md border border-[var(--line)] bg-[rgba(255,255,252,0.72)] text-sm">
+          <thead className="bg-[#eef3e8]">
             <tr>
-              <th className="text-left p-2 border-b border-neutral-200">原名</th>
-              <th className="text-left p-2 border-b border-neutral-200">新名</th>
-              <th className="text-left p-2 border-b border-neutral-200">出场区间</th>
-              <th className="text-left p-2 border-b border-neutral-200">源端 description / target 备注</th>
+              <th className="border-b border-[var(--line)] p-2 text-left">原名</th>
+              <th className="border-b border-[var(--line)] p-2 text-left">新名</th>
+              <th className="border-b border-[var(--line)] p-2 text-left">出场区间</th>
+              <th className="border-b border-[var(--line)] p-2 text-left">源端 description / target 备注</th>
             </tr>
           </thead>
           <tbody>
@@ -36,7 +36,7 @@ export function MapsPanel({ novelId }: { novelId: string }) {
                 : '—'
               const note = e.source_meta?.description || e.target_note || '—'
               return (
-                <tr key={e.target} className="border-b border-neutral-100 last:border-b-0">
+                <tr key={e.target} className="border-b border-[var(--line)] last:border-b-0">
                   <td className="p-2 font-mono text-xs">{e.source ?? <em className="text-amber-600">target 自创</em>}</td>
                   <td className="p-2">{e.target}</td>
                   <td className="p-2 text-neutral-500 text-xs">{range}</td>
@@ -49,9 +49,9 @@ export function MapsPanel({ novelId }: { novelId: string }) {
       </section>
 
       <section>
-        <h3 className="font-medium mb-3 text-sm text-neutral-700">题材置换</h3>
+        <h3 className="mb-3 text-sm font-semibold text-[var(--ink)]">题材置换</h3>
         {maps.setting_map ? (
-          <div className="rounded border border-neutral-200 p-3 space-y-2 text-sm">
+          <div className="surface-tight space-y-2 p-3 text-sm">
             <div>
               <span className="text-neutral-500 text-xs mr-2">原行业</span>
               <span>{maps.setting_map.original_industry}</span>

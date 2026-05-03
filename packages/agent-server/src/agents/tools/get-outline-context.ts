@@ -24,6 +24,7 @@ export function buildGetOutlineContextTool(novelId: string): ToolDefinition {
       '返回的 source.originality_risks 是必须主动避开的标志性桥段载体',
       '返回的 meta.industry / era / genre_tags / world_rules / style_tags 是题材锚点——target_industry 默认要保持一致',
       '返回的 nearby_outlines 是邻近章节已写的大纲（前后各 3 章），用来保持新载体连贯、避免和邻章重复',
+      '返回的 hook_ledger 是当前钩子账本：overdue=true 或 open_chapters 过长的钩子，需要优先安排阶段性兑现',
       '**maps.character_map[i].source_meta.first_chapter / last_chapter** 限定每个角色出场区间——本章号在区间外的角色不能 referenced_characters 引用，writeChapterOutline 会硬拒',
       '**禁止**：调完本工具后再 read source/chapters/<n>.md。原书 desc / summary 会污染你的载体设计',
     ],
@@ -74,11 +75,35 @@ export function buildGetOutlineContextTool(novelId: string): ToolDefinition {
       const open_hooks = [
         ...sourceHooks
           .filter((h) => state?.hooks[h.id]?.status !== 'paid_off')
-          .map((h) => ({ id: h.id, description: h.description, source: 'source' as const })),
+          .map((h) => ({
+            id: h.id,
+            type: h.category,
+            description: h.description,
+            planted_chapter: h.planted_chapter,
+            expected_payoff_chapter: h.payoff_chapter,
+            payoff_plan: '',
+            source: 'source' as const,
+          })),
         ...(state?.new_hooks ?? [])
           .filter((h) => h.status === 'open')
-          .map((h) => ({ id: h.id, description: h.description, source: 'new' as const })),
+          .map((h) => ({
+            id: h.id,
+            type: h.type ?? null,
+            description: h.description,
+            planted_chapter: h.planted_chapter,
+            expected_payoff_chapter: h.expected_payoff_chapter,
+            payoff_plan: h.payoff_plan ?? '',
+            source: 'new' as const,
+          })),
       ]
+
+      const hook_ledger = open_hooks.map((h) => ({
+        ...h,
+        open_chapters: Math.max(0, number - h.planted_chapter),
+        overdue:
+          typeof h.expected_payoff_chapter === 'number' &&
+          h.expected_payoff_chapter < number,
+      }))
 
       const alive_summary = Object.entries(state?.alive_status ?? {})
         .filter(([, s]) => s.alive)
@@ -109,6 +134,7 @@ export function buildGetOutlineContextTool(novelId: string): ToolDefinition {
         maps,
         involved_subplots,
         open_hooks,
+        hook_ledger,
         alive_characters: alive_summary,
         nearby_outlines,
       }

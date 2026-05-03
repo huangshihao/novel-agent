@@ -70,11 +70,13 @@ export async function applyChapterStateDiff(
   for (const id of outline.hooks_to_plant) {
     if (cur.hooks[id]) continue
     if (cur.new_hooks.some((x) => x.id === id)) continue
+    const plan = outline.hook_plans?.find((x) => x.id === id)
     cur.new_hooks.push({
       id,
-      description: '',
+      description: plan?.description ?? '',
       planted_chapter: chapterNumber,
-      expected_payoff_chapter: null,
+      expected_payoff_chapter: plan?.expected_payoff_chapter ?? null,
+      ...(plan ? { type: plan.type, payoff_plan: plan.payoff_plan } : {}),
       status: 'open',
     })
   }

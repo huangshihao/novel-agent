@@ -30,24 +30,24 @@ export function RewritePage() {
   const currentChat = chats?.find((c) => c.id === chatId)
 
   return (
-    <div className="h-screen flex flex-col">
-      <header className="border-b border-neutral-200 px-4 h-12 flex items-center gap-3 shrink-0">
-        <Link to={`/novels/${id}`} className="text-sm text-neutral-500 hover:underline">
+    <div className="flex h-screen flex-col text-[var(--ink)]">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b ink-rule bg-[rgba(250,249,244,0.9)] px-4 backdrop-blur">
+        <Link to={`/novels/${id}`} className="text-sm text-[var(--muted)] hover:text-[var(--ink)]">
           ← {novel.title}
         </Link>
         {currentChat && (
-          <span className="text-sm text-neutral-700">/ {currentChat.title}</span>
+          <span className="truncate text-sm font-medium">/ {currentChat.title}</span>
         )}
       </header>
-      <div className="flex-1 flex overflow-hidden">
-        <div className="w-[240px] shrink-0">
+      <div className="flex flex-1 overflow-hidden">
+        <div className="w-[260px] shrink-0">
           <ChatSidebar
             novelId={id}
             selectedChatId={chatId}
             onSelect={(cid) => setChatId(cid || null)}
           />
         </div>
-        <div className="min-w-[500px] flex-1 border-r border-neutral-200">
+        <div className="min-w-[500px] flex-1 border-r ink-rule bg-[rgba(255,255,252,0.56)]">
           <ChatPanel
             novelId={id}
             chatId={chatId}
@@ -57,7 +57,7 @@ export function RewritePage() {
             }}
           />
         </div>
-        <div className="min-w-[600px] flex-1">
+        <div className="min-w-[600px] flex-1 bg-[rgba(244,246,242,0.62)]">
           <ArtifactTabs novelId={id} />
         </div>
       </div>

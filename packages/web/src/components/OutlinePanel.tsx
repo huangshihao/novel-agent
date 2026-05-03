@@ -18,7 +18,7 @@ export function OutlinePanel({ novelId }: Props) {
 
   return (
     <div className="flex h-full">
-      <aside className="w-64 border-r border-neutral-200 overflow-y-auto">
+      <aside className="w-64 overflow-y-auto border-r ink-rule bg-[rgba(250,249,244,0.52)]">
         <ul>
           {!outlines?.length && (
             <li className="text-xs text-neutral-400 p-4">
@@ -29,8 +29,10 @@ export function OutlinePanel({ novelId }: Props) {
             <li
               key={o.number}
               className={clsx(
-                'border-b border-neutral-100',
-                selected === o.number ? 'bg-amber-50' : 'hover:bg-neutral-50',
+                'border-b border-[var(--line)]',
+                selected === o.number
+                  ? 'bg-[rgba(242,223,201,0.68)] shadow-[inset_3px_0_0_var(--accent)]'
+                  : 'hover:bg-[rgba(255,255,252,0.62)]',
               )}
             >
               <button
@@ -44,7 +46,7 @@ export function OutlinePanel({ novelId }: Props) {
         </ul>
       </aside>
 
-      <section className="flex-1 overflow-y-auto p-4">
+      <section className="flex-1 overflow-y-auto p-5">
         {selected == null && <p className="text-sm text-neutral-400">选一章查看大纲</p>}
         {selected != null && <OutlineDetail novelId={novelId} number={selected} />}
       </section>
@@ -60,9 +62,9 @@ function OutlineDetail({ novelId, number }: { novelId: string; number: number })
   if (!o) return <p className="text-sm text-neutral-400">加载中...</p>
 
   return (
-    <article className="space-y-4 text-sm">
+    <article className="surface-tight space-y-4 p-5 text-sm">
       <header className="flex items-center justify-between">
-        <h2 className="text-lg font-medium">第 {o.number} 章大纲</h2>
+        <h2 className="text-lg font-semibold">第 {o.number} 章大纲</h2>
         <span className="text-xs text-neutral-500">参考原书第 {o.source_chapter_ref} 章</span>
       </header>
       <section>
@@ -85,7 +87,7 @@ function OutlineDetail({ novelId, number }: { novelId: string; number: number })
         <h3 className="text-xs uppercase tracking-wide text-neutral-500 mb-1">关键事件（function → 新载体）</h3>
         <ul className="space-y-1">
           {o.key_events.map((e, i) => (
-            <li key={i} className="border-l-2 border-amber-200 pl-2">
+            <li key={i} className="border-l-2 border-[var(--accent-soft)] pl-2">
               <div className="text-xs text-neutral-500">{e.function || '—'}</div>
               <div>{e.new_carrier}</div>
             </li>

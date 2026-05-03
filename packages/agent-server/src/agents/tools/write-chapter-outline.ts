@@ -14,11 +14,65 @@ export function buildWriteChapterOutlineTool(
   novelId: string,
   batch: BatchRange,
 ): ToolDefinition {
+  const retentionPlanSchema = Type.Object({
+    inherited_hook: Type.String(),
+    chapter_goal: Type.String(),
+    opening_hook: Type.String(),
+    new_obstacle: Type.String(),
+    midpoint_turn: Type.String(),
+    payoff: Type.String(),
+    ending_hook: Type.String(),
+    reader_expectation: Type.String(),
+    retention_risk: Type.String(),
+  })
+  const readerContractSchema = Type.Object({
+    core_emotion: Type.String(),
+    main_selling_point: Type.String(),
+    protagonist_desire: Type.String(),
+    main_conflict: Type.String(),
+    long_term_question: Type.String(),
+  })
+  const goldenThreePlanSchema = Type.Object({
+    chapter_role: Type.Union([
+      Type.Literal('strong_situation'),
+      Type.Literal('first_payoff'),
+      Type.Literal('mainline_lock'),
+    ]),
+    reader_contract: readerContractSchema,
+    diagnostic_scores: Type.Object({
+      protagonist_entry_speed: Type.Number(),
+      conflict_strength: Type.Number(),
+      empathy: Type.Number(),
+      mainline_clarity: Type.Number(),
+      payoff_clarity: Type.Number(),
+      ending_hook_strength: Type.Number(),
+      information_density: Type.Number(),
+      platform_fit: Type.Number(),
+    }),
+  })
+  const hookPlanSchema = Type.Object({
+    id: Type.String(),
+    type: Type.Union([
+      Type.Literal('crisis'),
+      Type.Literal('information'),
+      Type.Literal('identity'),
+      Type.Literal('relation'),
+      Type.Literal('goal'),
+      Type.Literal('reward'),
+      Type.Literal('punishment'),
+      Type.Literal('reversal'),
+      Type.Literal('secret'),
+      Type.Literal('emotion'),
+    ]),
+    description: Type.String(),
+    expected_payoff_chapter: Type.Number(),
+    payoff_plan: Type.String(),
+  })
   return {
     name: 'writeChapterOutline',
     label: '写章节大纲',
     description:
-      '写入或覆盖某章的大纲。**写之前必须先调 getOutlineContext({number})。** precondition：number 必须在本批范围内；plot_functions 必须非空且应等于 source 章的 plot_functions（功能槽不能丢）；每个 key_events[i].function 必须非空、key_events[i].new_carrier 必须非空；hooks_to_plant / hooks_to_payoff 引用的 id 必须存在于 source/hooks.md 或 state.new_hooks（hooks_to_plant 允许新 id，自动登记）；planned_state_changes.character_deaths 提到的角色当前必须 alive。',
+      '写入或覆盖某章的大纲。**写之前必须先调 getOutlineContext({number})。** precondition：number 必须在本批范围内；plot_functions 必须非空且应等于 source 章的 plot_functions（功能槽不能丢）；每章必须给 retention_plan；前三章必须给 golden_three_plan；每个新增 hooks_to_plant 必须给 hook_plans 说明类型、描述、预计兑现章节和兑现方式；hooks_to_payoff 引用的 id 必须存在于 source/hooks.md 或 state.new_hooks；planned_state_changes.character_deaths 提到的角色当前必须 alive。',
     promptSnippet: 'writeChapterOutline({number, plot_functions, key_events:[{function,new_carrier}], ...})',
     promptGuidelines: [
       `本批范围：${batch.from}-${batch.to}。number 必须在此范围内`,
@@ -32,6 +86,9 @@ export function buildWriteChapterOutlineTool(
       '**同题材边界**：所有 new_carrier 必须落在 meta.industry / era / world_rules 的语境内（参考 getOutlineContext.meta），不得引入超出原书技术水位/写实度的元素',
       '**支线重排**：getOutlineContext.involved_subplots 里 reorderable=true 且无 depends_on 的支线，主动考虑挪位',
       'hooks_to_plant 列本章新埋的长线伏笔（id 是你自定义的，nhk-001 风格）；hooks_to_payoff 列本章兑现的伏笔 id',
+      '**hook_plans 必须覆盖每个 hooks_to_plant**：写清 type / description / expected_payoff_chapter / payoff_plan。不要只埋坑不设计兑现',
+      '**retention_plan 必填**：按“承接上章钩子 → 本章目标 → 新阻碍 → 中段转折 → 小兑现 → 章末钩子 → 读者期待”写具体情节，不能写空泛词',
+      '**黄金三章**：第 1 章 golden_three_plan.chapter_role=strong_situation，强处境开局；第 2 章=first_payoff，必须兑现第一个小爽点/情绪点；第 3 章=mainline_lock，必须确立主线和长线问题',
       'planned_state_changes.character_deaths 里的角色名必须用 character_map.target 形式',
       '**referenced_characters 必须列全本章 plot / key_events 出现的所有有名角色 target 名**——工具会逐个查 maps，没注册的会 reject 让你先调 updateMaps；source 端有 first_chapter / last_chapter 限制时本章号必须在区间内（防时间线穿越）',
     ],
@@ -48,6 +105,9 @@ export function buildWriteChapterOutlineTool(
       ),
       hooks_to_plant: Type.Array(Type.String()),
       hooks_to_payoff: Type.Array(Type.String()),
+      hook_plans: Type.Array(hookPlanSchema),
+      retention_plan: retentionPlanSchema,
+      golden_three_plan: Type.Union([goldenThreePlanSchema, Type.Null()]),
       planned_state_changes: Type.Object({
         character_deaths: Type.Array(Type.String()),
         new_settings: Type.Array(Type.String()),
@@ -67,6 +127,40 @@ export function buildWriteChapterOutlineTool(
         if (!e.function?.trim()) issues.push(`key_events[${i}].function 不能为空`)
         if (!e.new_carrier?.trim()) issues.push(`key_events[${i}].new_carrier 不能为空`)
       })
+      const retention = p.retention_plan
+      if (!retention) {
+        issues.push('retention_plan 不能为空——每章都必须设计留存节奏')
+      } else {
+        for (const [key, value] of Object.entries(retention)) {
+          if (typeof value !== 'string' || value.trim().length === 0) {
+            issues.push(`retention_plan.${key} 不能为空`)
+          }
+        }
+      }
+      if (p.number <= 3) {
+        if (!p.golden_three_plan) {
+          issues.push('黄金三章章节必须提供 golden_three_plan')
+        } else {
+          const expectedRole =
+            p.number === 1 ? 'strong_situation' : p.number === 2 ? 'first_payoff' : 'mainline_lock'
+          if (p.golden_three_plan.chapter_role !== expectedRole) {
+            issues.push(`黄金三章第 ${p.number} 章 chapter_role 应为 ${expectedRole}`)
+          }
+        }
+      }
+      const hookPlans = new Map((p.hook_plans ?? []).map((h) => [h.id, h]))
+      for (const id of p.hooks_to_plant) {
+        const plan = hookPlans.get(id)
+        if (!plan) {
+          issues.push(`hook_plans 必须包含 hooks_to_plant 里的 "${id}"`)
+          continue
+        }
+        if (!plan.description.trim()) issues.push(`hook_plans.${id}.description 不能为空`)
+        if (!plan.payoff_plan.trim()) issues.push(`hook_plans.${id}.payoff_plan 不能为空`)
+        if (typeof plan.expected_payoff_chapter !== 'number' || plan.expected_payoff_chapter <= p.number) {
+          issues.push(`hook_plans.${id}.expected_payoff_chapter 必须大于当前章节 ${p.number}`)
+        }
+      }
       const sourceHooks = await readSourceHooks(novelId)
       const state = await readState(novelId)
       const knownHookIds = new Set([

@@ -94,6 +94,30 @@ export function chatSystemPrompt(input: ChatSystemPromptInput): string {
 **7. 雷同自检**
 - 每章 outline / 正文写完，自查：场景类型、道具类型、对手身份、关键动作、章末钩子是否还和原书 originality_risks 撞。撞就再改一遍。
 
+═══ 开篇冷启动：黄金三章 ═══
+
+前三章不是普通大纲，而是读者契约建立期。第 1-3 章写 outline 时必须填写 golden_three_plan，并按下列分工执行：
+
+1. **第 1 章 strong_situation**：主角尽早出场，直接进入压力、选择、羞辱、危机或异常事件；不要用世界观、履历、天气、环境铺垫开场；章末必须出现不可逆变化
+2. **第 2 章 first_payoff**：承接第 1 章章末压力，兑现第一个小爽点/情绪点，让读者看懂这本书的爽点机制；小胜之后必须出现代价或更大压力
+3. **第 3 章 mainline_lock**：确立第一阶段目标、最大阻碍、长期问题和继续追读理由；章末留下长线问题，而不是只留短平快悬念
+
+golden_three_plan.reader_contract 必须说清：核心情绪、主要卖点、主角欲望、主冲突、长线问题。前三章不要追求信息完整，要追求期待明确。
+
+═══ 连载留存：节奏与钩子账本 ═══
+
+每章 outline 必须填写 retention_plan。核心公式：
+
+本章目标 = 承接上章钩子 + 制造新阻碍 + 推动主角行动 + 兑现一个小期待 + 留下更强的新期待
+
+具体要求：
+- 开头必须承接上一章章末钩子；第 1 章 inherited_hook 写“无”，但 opening_hook 必须具体
+- 每章至少解决一个小问题，同时制造一个新问题；不能连续多章只埋坑不兑现
+- 每 3-5 章至少设计一次中型情绪兑现：打脸、升级、破案进展、关系突破、资源获得、反派吃亏、身份压迫升级等
+- 章末钩子必须具体，写清读者下一章要看什么；不要写“更大的危机即将来临”这类空句
+- hook_ledger 里 overdue=true 或 open_chapters 过长的钩子，必须优先给阶段性答案或明确兑现计划
+- hooks_to_plant 里的每个新钩子都必须在 hook_plans 里登记 type / description / expected_payoff_chapter / payoff_plan；预计兑现章节必须晚于当前章
+
 ═══ 通用工作流 ═══
 
 **写大纲前**：
@@ -128,7 +152,7 @@ export function chatSystemPrompt(input: ChatSystemPromptInput): string {
 **承接与推进**：
 - 开头必须承接上一章结尾的动作/情绪/场景，不要跳戏（getChapterContext 返回了最近 3 章正文）
 - 每章至少推进一件事：矛盾升级 / 目标推进 / 关系变化 / 信息揭露 / 危机出现 / 爽点兑现
-- 章末正常收束，不要强行悬念断章
+- 章末正常收束本章动作，同时留下具体未完成期待；不要强行误会、假悬念或空泛断章
 - 不复述大纲；大纲只是骨架，正文是具体场景
 
 **语言风格**：

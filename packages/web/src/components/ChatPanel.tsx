@@ -28,7 +28,7 @@ interface Props {
 function UserMessage() {
   return (
     <MessagePrimitive.Root className="flex justify-end my-2">
-      <div className="max-w-[80%] rounded-2xl bg-neutral-900 text-white px-4 py-2 text-sm whitespace-pre-wrap">
+      <div className="max-w-[80%] rounded-[18px] rounded-br-md bg-[var(--ink)] px-4 py-2 text-sm text-[var(--paper-soft)] shadow-sm whitespace-pre-wrap">
         <MessagePrimitive.Parts />
       </div>
     </MessagePrimitive.Root>
@@ -72,7 +72,7 @@ function AssistantReasoningPart(props: { text: string; status: { type: string } 
 function AssistantMessage() {
   return (
     <MessagePrimitive.Root className="flex justify-start my-2">
-      <div className="max-w-[85%] text-sm space-y-1">
+      <div className="max-w-[85%] space-y-1 rounded-[18px] rounded-bl-md border border-[var(--line)] bg-[rgba(255,255,252,0.78)] px-4 py-2 text-sm shadow-sm">
         <MessagePrimitive.Parts
           components={{ Text: AssistantTextPart, Reasoning: AssistantReasoningPart }}
         />
@@ -116,10 +116,12 @@ export function ChatPanel({ novelId, chatId, onChatCreated }: Props) {
       <GetOutlineContextToolUI />
       <WriteChapterToolUI />
       <ThreadPrimitive.Root className="flex flex-col h-full">
-        <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-3">
+        <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-4">
           <ThreadPrimitive.Empty>
-            <div className="flex items-center justify-center h-full text-sm text-neutral-400">
-              发条消息开始改写
+            <div className="flex h-full items-center justify-center">
+              <div className="surface-tight max-w-sm px-5 py-4 text-center text-sm text-[var(--muted)]">
+                发条消息开始改写
+              </div>
             </div>
           </ThreadPrimitive.Empty>
           <ThreadPrimitive.Messages
@@ -129,7 +131,7 @@ export function ChatPanel({ novelId, chatId, onChatCreated }: Props) {
             }}
           />
         </ThreadPrimitive.Viewport>
-        <div className="border-t border-neutral-200 p-3 flex gap-2 items-end bg-white">
+        <div className="flex items-end gap-2 border-t ink-rule bg-[rgba(250,249,244,0.9)] p-3">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -138,13 +140,13 @@ export function ChatPanel({ novelId, chatId, onChatCreated }: Props) {
             onCompositionEnd={() => { composingRef.current = false }}
             placeholder="Enter 发送，Shift+Enter 换行"
             rows={2}
-            className="flex-1 px-3 py-2 border border-neutral-300 rounded text-sm resize-none outline-none focus:border-neutral-500"
+            className="flex-1 resize-none rounded-md border border-[var(--line-strong)] bg-[rgba(255,255,252,0.86)] px-3 py-2 text-sm outline-none focus:border-[var(--ink)]"
           />
           {isRunning ? (
             <button
               type="button"
               onClick={() => void cancel()}
-              className="px-4 py-2 rounded bg-neutral-200 text-neutral-700 text-sm"
+              className="btn-secondary px-4 py-2 text-sm"
             >
               停止
             </button>
@@ -153,7 +155,7 @@ export function ChatPanel({ novelId, chatId, onChatCreated }: Props) {
               type="button"
               onClick={submit}
               disabled={!draft.trim()}
-              className="px-4 py-2 rounded bg-neutral-900 text-white text-sm disabled:opacity-50"
+              className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
             >
               发送
             </button>

@@ -67,12 +67,12 @@ export function ChatSidebar({ novelId, selectedChatId, onSelect }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full border-r border-neutral-200 bg-neutral-50">
-      <div className="p-2 border-b border-neutral-200">
+    <div className="flex h-full flex-col border-r ink-rule bg-[rgba(244,246,242,0.78)]">
+      <div className="border-b ink-rule p-3">
         <button
           onClick={() => createMut.mutate()}
           disabled={createMut.isPending}
-          className="w-full px-2 py-1.5 text-sm rounded bg-neutral-900 text-white disabled:opacity-50"
+          className="btn-primary w-full px-2 py-2 text-sm disabled:opacity-50"
         >
           + 新建 chat
         </button>
@@ -85,8 +85,10 @@ export function ChatSidebar({ novelId, selectedChatId, onSelect }: Props) {
             <div
               key={c.id}
               className={clsx(
-                'group px-3 py-2 border-b border-neutral-200 cursor-pointer text-sm',
-                isSelected ? 'bg-white' : 'hover:bg-neutral-100',
+                'group cursor-pointer border-b ink-rule px-3 py-3 text-sm transition-colors',
+                isSelected
+                  ? 'bg-[rgba(255,255,252,0.82)] shadow-[inset_3px_0_0_var(--accent)]'
+                  : 'hover:bg-[rgba(255,255,252,0.55)]',
               )}
               onClick={() => onSwitch(c.id)}
             >
@@ -114,7 +116,7 @@ export function ChatSidebar({ novelId, selectedChatId, onSelect }: Props) {
           )
         })}
         {(chats ?? []).length === 0 && (
-          <div className="p-4 text-xs text-neutral-400 text-center">
+          <div className="p-4 text-center text-xs text-[var(--muted)]">
             还没有 chat
           </div>
         )}

@@ -237,6 +237,63 @@ export interface OutlineKeyEvent {
   new_carrier: string
 }
 
+export type RetentionHookType =
+  | 'crisis'
+  | 'information'
+  | 'identity'
+  | 'relation'
+  | 'goal'
+  | 'reward'
+  | 'punishment'
+  | 'reversal'
+  | 'secret'
+  | 'emotion'
+
+export interface ReaderContract {
+  core_emotion: string
+  main_selling_point: string
+  protagonist_desire: string
+  main_conflict: string
+  long_term_question: string
+}
+
+export interface GoldenThreeDiagnosticScores {
+  protagonist_entry_speed: number
+  conflict_strength: number
+  empathy: number
+  mainline_clarity: number
+  payoff_clarity: number
+  ending_hook_strength: number
+  information_density: number
+  platform_fit: number
+}
+
+export interface GoldenThreePlan {
+  chapter_role: 'strong_situation' | 'first_payoff' | 'mainline_lock'
+  reader_contract: ReaderContract
+  diagnostic_scores: GoldenThreeDiagnosticScores
+}
+
+export interface ChapterRetentionPlan {
+  inherited_hook: string
+  chapter_goal: string
+  opening_hook: string
+  new_obstacle: string
+  midpoint_turn: string
+  payoff: string
+  ending_hook: string
+  reader_expectation: string
+  retention_risk: string
+}
+
+export interface HookPlan {
+  id: string
+  type: RetentionHookType
+  description: string
+  expected_payoff_chapter: number | null
+  payoff_plan: string
+}
+
 export interface OutlineRecord {
   number: number
   source_chapter_ref: number
@@ -250,6 +307,9 @@ export interface OutlineRecord {
   plot: string
   key_events: OutlineKeyEvent[]
   referenced_characters: string[]
+  retention_plan?: ChapterRetentionPlan | null
+  golden_three_plan?: GoldenThreePlan | null
+  hook_plans?: HookPlan[]
 }
 
 export interface ChapterDraftRecord {
@@ -271,9 +331,11 @@ export interface AliveStatus {
 
 export interface NewHook {
   id: string
+  type?: RetentionHookType | null
   description: string
   planted_chapter: number
   expected_payoff_chapter: number | null
+  payoff_plan?: string
   status: 'open' | 'paid_off'
   paid_chapter?: number
 }

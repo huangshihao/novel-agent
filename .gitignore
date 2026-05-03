@@ -4,6 +4,7 @@ dist/
 .DS_Store
 .env
 .env.local
+.claude/
 
 # 本地数据：分析产物 + 改写产物。理由见 spec 第 3 节。
 data/

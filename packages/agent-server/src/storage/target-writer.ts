@@ -13,6 +13,7 @@ export type {
   MapsRecord,
   OutlineRecord,
   OutlineKeyEvent,
+  HookPlan,
   ChapterDraftRecord,
 } from '@novel-agent/shared'
 
@@ -28,6 +29,9 @@ export async function writeOutline(novelId: string, rec: OutlineRecord): Promise
     key_events: rec.key_events,
     hooks_to_plant: rec.hooks_to_plant,
     hooks_to_payoff: rec.hooks_to_payoff,
+    hook_plans: rec.hook_plans ?? [],
+    retention_plan: rec.retention_plan ?? null,
+    golden_three_plan: rec.golden_three_plan ?? null,
     planned_state_changes: rec.planned_state_changes,
     referenced_characters: rec.referenced_characters,
   }
