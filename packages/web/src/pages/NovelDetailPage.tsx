@@ -7,6 +7,7 @@ import type {
   Replaceability,
   WritingRhythm,
 } from '@novel-agent/shared'
+import { getAnalyzedCoverage } from '@novel-agent/shared'
 import { api } from '../lib/api'
 import { cn, statusLabel, statusStyle } from '../lib/ui'
 import { useConfirm } from '../lib/use-confirm'
@@ -61,9 +62,13 @@ export function NovelDetailPage() {
     rangeTotal > 0
       ? Math.round((novel.analyzed_count / rangeTotal) * 100)
       : 0
-  // 只要不在分析中且至少已完成 1 章，就显示工具条（包含「继续分析」和「仅重聚合」）
+  // 只要不在分析中且至少已完成 1 章，就显示继续分析和高级操作。
   const showTools = !analyzing && novel.analyzed_to > 0
   const canContinue = novel.analyzed_to < novel.chapter_count
+  const coverage = getAnalyzedCoverage({
+    analyzedTo: novel.analyzed_to,
+    chapterCount: novel.chapter_count,
+  })
 
   return (
     <div className="space-y-6">
@@ -114,20 +119,20 @@ export function NovelDetailPage() {
             <div className="mt-1 text-lg font-semibold">{novel.chapter_count}</div>
           </div>
           <div className="surface-tight px-3 py-2">
-            <div className="text-xs text-[var(--muted)]">累计高水位</div>
-            <div className="mt-1 text-lg font-semibold">第 {novel.analyzed_to} 章</div>
+            <div className="text-xs text-[var(--muted)]">已分析章节</div>
+            <div className="mt-1 text-lg font-semibold">
+              {coverage.analyzed} / {coverage.total} 章
+            </div>
           </div>
           <div className="surface-tight px-3 py-2">
-            <div className="text-xs text-[var(--muted)]">分析进度</div>
+            <div className="flex items-center justify-between gap-3 text-xs text-[var(--muted)]">
+              <span>已分析占比</span>
+              <span className="font-mono">{coverage.percent}%</span>
+            </div>
             <div className="mt-1 h-2 overflow-hidden rounded-full bg-[#e6e9e2]">
               <div
                 className="h-full rounded-full bg-[var(--sage)]"
-                style={{
-                  width: `${Math.min(
-                    100,
-                    Math.round((novel.analyzed_to / Math.max(1, novel.chapter_count)) * 100),
-                  )}%`,
-                }}
+                style={{ width: `${coverage.percent}%` }}
               />
             </div>
           </div>
@@ -729,72 +734,83 @@ function ContinueAnalysisBar({
     onError: (e: Error) => setErr(e.message),
   })
   const busy = cont.isPending || reagg.isPending
+  const reaggregateButton = (
+    <button
+      onClick={async () => {
+        const ok = await confirm({
+          title: '重新聚合',
+          confirmLabel: '开始',
+          message: (
+            <div className="space-y-2">
+              <p>用已有章节数据重新聚合人物 / 支线 / 钩子？</p>
+              <p className="text-neutral-600">
+                不会重新读取章节原文，只会基于已抽取的摘要 / 事件 / 钩子候选：
+              </p>
+              <ul className="list-disc list-inside space-y-0.5 text-neutral-600">
+                <li>人物卡：合并别名、过滤工具人、重写描述</li>
+                <li>支线：重新识别 3-10 条主支线</li>
+                <li>钩子：重新过滤 / 去重 / 匹配回收</li>
+              </ul>
+              <p className="text-neutral-500 text-xs">
+                适合调整聚合规则后复验，正常分析完成后通常不用再点。
+              </p>
+            </div>
+          ),
+        })
+        if (ok) reagg.mutate()
+      }}
+      disabled={busy}
+      title={
+        '不重新读取章节原文，只用已抽取的数据重建人物、支线和钩子。调整聚合规则或对结果不满意时用，正常分析完成后通常不需要。'
+      }
+      className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-50"
+    >
+      {reagg.isPending ? '聚合中…' : '仅重聚合'}
+    </button>
+  )
+
   return (
     <div className="surface flex flex-wrap items-center gap-3 p-4 text-sm">
-      <span className={cn('text-neutral-600', !canContinue && 'opacity-40')}>
-        继续分析
-      </span>
-      <input
-        type="number"
-        min={1}
-        value={more}
-        disabled={!canContinue}
-        onChange={(e) => setMore(Math.max(1, Number(e.target.value) || 1))}
-        className="w-20 rounded-md border border-[var(--line-strong)] bg-[rgba(255,255,252,0.78)] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8d7bc] disabled:opacity-40"
-      />
-      <span className={cn('text-neutral-600', !canContinue && 'opacity-40')}>章</span>
-      <button
-        onClick={() => cont.mutate()}
-        disabled={busy || !canContinue}
-        title={
-          !canContinue
-            ? '所有章节已分析完毕'
-            : '对未分析过的章节调用 LLM 抽取摘要/人物/事件/钩子候选，然后重新聚合人物、支线、钩子。消耗 LLM token。'
-        }
-        className="btn-primary px-3 py-1.5 text-sm disabled:opacity-50"
-      >
-        {cont.isPending ? '启动中…' : '开始'}
-      </button>
-      <span className="mx-1 h-4 w-px bg-neutral-200" aria-hidden />
-      <button
-        onClick={async () => {
-          const ok = await confirm({
-            title: '重新聚合',
-            confirmLabel: '开始',
-            message: (
-              <div className="space-y-2">
-                <p>用已有章节数据重新聚合人物 / 支线 / 钩子？</p>
-                <p className="text-neutral-600">
-                  不会重新读取章节原文，只会基于已抽取的摘要 / 事件 / 钩子候选：
-                </p>
-                <ul className="list-disc list-inside space-y-0.5 text-neutral-600">
-                  <li>人物卡：合并别名、过滤工具人、重写描述</li>
-                  <li>支线：重新识别 3-10 条主支线</li>
-                  <li>钩子：重新过滤 / 去重 / 匹配回收</li>
-                </ul>
-                <p className="text-neutral-500 text-xs">
-                  速度快、不消耗每章抽取 token。适合调整聚合规则后复验。
-                </p>
-              </div>
-            ),
-          })
-          if (ok) reagg.mutate()
-        }}
-        disabled={busy}
-        title={
-          '不重新读取章节原文，只用已抽取的数据重建：\n• 人物卡（合并别名、过滤工具人）\n• 支线（重新识别）\n• 钩子（过滤/去重/回收匹配）\n\n调整了聚合规则或对结果不满意时用。速度快、不消耗每章抽取的 token。'
-        }
-        className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-50"
-      >
-        {reagg.isPending ? '聚合中…' : '仅重聚合'}
-      </button>
+      {canContinue ? (
+        <>
+          <span className="text-neutral-600">继续分析</span>
+          <input
+            type="number"
+            min={1}
+            value={more}
+            onChange={(e) => setMore(Math.max(1, Number(e.target.value) || 1))}
+            className="w-20 rounded-md border border-[var(--line-strong)] bg-[rgba(255,255,252,0.78)] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8d7bc]"
+          />
+          <span className="text-neutral-600">章</span>
+          <button
+            onClick={() => cont.mutate()}
+            disabled={busy}
+            title="对未分析过的章节调用 LLM 抽取摘要/人物/事件/钩子候选，然后重新聚合人物、支线、钩子。消耗 LLM token。"
+            className="btn-primary px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            {cont.isPending ? '启动中…' : '开始'}
+          </button>
+        </>
+      ) : (
+        <span className="text-neutral-600">所有章节已分析完毕</span>
+      )}
+      <details className="basis-full">
+        <summary className="w-fit cursor-pointer select-none text-xs text-neutral-500 hover:text-neutral-800">
+          高级操作
+        </summary>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          {reaggregateButton}
+          <span className="text-xs text-neutral-400">
+            只重算人物 / 支线 / 钩子，适合改过聚合规则后复验。
+          </span>
+        </div>
+      </details>
       {err && <span className="text-rose-600 text-xs">{err}</span>}
-      <p className="basis-full text-xs text-neutral-400 mt-1 leading-relaxed">
-        <span className="text-neutral-500">继续分析</span>：扫描新章节并重建全部结果（读章节 +
-        聚合，耗 token）
-        <span className="mx-2">·</span>
-        <span className="text-neutral-500">仅重聚合</span>：只用已抽好的数据重算人物/支线/钩子（不读章节、几乎不耗 token）
-      </p>
+      {canContinue && (
+        <p className="basis-full text-xs text-neutral-400 mt-1 leading-relaxed">
+          继续分析会扫描新章节并重建全部结果，需要读取章节并消耗 LLM token。
+        </p>
+      )}
     </div>
   )
 }

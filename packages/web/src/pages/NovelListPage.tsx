@@ -1,6 +1,7 @@
 import { useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { getAnalyzedCoverage } from '@novel-agent/shared'
 import { api } from '../lib/api'
 import { cn, statusLabel, statusStyle } from '../lib/ui'
 import { useConfirm } from '../lib/use-confirm'
@@ -210,63 +211,68 @@ export function NovelListPage() {
         )}
         {novels && novels.length > 0 && (
           <ul className="grid gap-3 md:grid-cols-2">
-            {novels.map((n) => (
-              <li
-                key={n.id}
-                className="surface-tight p-4 transition-transform hover:-translate-y-0.5 hover:border-[var(--line-strong)]"
-              >
-                <Link
-                  to={`/novels/${n.id}`}
-                  className="block min-w-0 space-y-3"
+            {novels.map((n) => {
+              const coverage = getAnalyzedCoverage({
+                analyzedTo: n.analyzed_to,
+                chapterCount: n.chapter_count,
+              })
+
+              return (
+                <li
+                  key={n.id}
+                  className="surface-tight p-4 transition-transform hover:-translate-y-0.5 hover:border-[var(--line-strong)]"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-base font-semibold">{n.title}</div>
-                      <div className="mt-1 text-xs text-[var(--muted)]">
-                        共 {n.chapter_count} 章 · 已分析至第 {n.analyzed_to} 章
+                  <Link
+                    to={`/novels/${n.id}`}
+                    className="block min-w-0 space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-base font-semibold">{n.title}</div>
+                        <div className="mt-1 text-xs text-[var(--muted)]">
+                          共 {coverage.total} 章 · 已分析 {coverage.analyzed} 章
+                        </div>
                       </div>
+                      <span
+                        className={cn(
+                          'shrink-0 rounded-full px-2 py-1 text-xs',
+                          statusStyle[n.status],
+                        )}
+                      >
+                        {statusLabel[n.status]}
+                      </span>
                     </div>
-                    <span
-                      className={cn(
-                        'shrink-0 rounded-full px-2 py-1 text-xs',
-                        statusStyle[n.status],
-                      )}
-                    >
-                      {statusLabel[n.status]}
-                    </span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-[#e6e9e2]">
-                    <div
-                      className="h-full rounded-full bg-[var(--sage)] transition-[width] duration-500"
-                      style={{
-                        width: `${Math.min(100, Math.round((n.analyzed_to / Math.max(1, n.chapter_count)) * 100))}%`,
-                      }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-3 text-xs text-[var(--muted)]">
-                    <span className="truncate">
-                      {n.status === 'analyzing' || n.status === 'splitting'
-                        ? `本次 ${n.analysis_from}–${n.analysis_to}（${n.analyzed_count}）`
-                        : n.error || '点击查看分析结果'}
-                    </span>
-                  </div>
-                </Link>
-                <button
-                  onClick={async () => {
-                    const ok = await confirm({
-                      title: '删除小说',
-                      message: `确定删除《${n.title}》？此操作不可撤销。`,
-                      confirmLabel: '删除',
-                      tone: 'danger',
-                    })
-                    if (ok) del.mutate(n.id)
-                  }}
-                  className="mt-3 text-xs text-neutral-400 hover:text-rose-600"
-                >
-                  删除
-                </button>
-              </li>
-            ))}
+                    <div className="h-1.5 overflow-hidden rounded-full bg-[#e6e9e2]">
+                      <div
+                        className="h-full rounded-full bg-[var(--sage)] transition-[width] duration-500"
+                        style={{ width: `${coverage.percent}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 text-xs text-[var(--muted)]">
+                      <span className="truncate">
+                        {n.status === 'analyzing' || n.status === 'splitting'
+                          ? `本次 ${n.analysis_from}–${n.analysis_to}（${n.analyzed_count}）`
+                          : n.error || `已分析占比 ${coverage.percent}%`}
+                      </span>
+                    </div>
+                  </Link>
+                  <button
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: '删除小说',
+                        message: `确定删除《${n.title}》？此操作不可撤销。`,
+                        confirmLabel: '删除',
+                        tone: 'danger',
+                      })
+                      if (ok) del.mutate(n.id)
+                    }}
+                    className="mt-3 text-xs text-neutral-400 hover:text-rose-600"
+                  >
+                    删除
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>
