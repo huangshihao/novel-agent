@@ -6,28 +6,18 @@ import {
 } from '@assistant-ui/react'
 import type { ThreadUiMessage } from '@novel-agent/shared'
 import { chatApi } from './chat-api.js'
+import {
+  appendAssistantReasoning,
+  appendAssistantText,
+  completeAssistantText,
+  type AssistantTurn,
+  type AssistantTurnPart,
+} from './chat-turn.js'
 
 export interface ChatRuntimeOptions {
   novelId: string
   chatId: string | null
   onChatCreated?: (chatId: string) => void
-}
-
-interface ToolCallState {
-  id: string
-  name: string
-  params?: unknown
-  result?: unknown
-}
-
-type AssistantTurnPart =
-  | { type: 'text'; text: string }
-  | { type: 'reasoning'; text: string }
-  | ({ type: 'tool-call' } & ToolCallState)
-
-interface AssistantTurn {
-  id: string
-  parts: AssistantTurnPart[]
 }
 
 export function useChatRuntime(opts: ChatRuntimeOptions) {
@@ -116,13 +106,13 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
 
       function handleEvent(type: string, payload: Record<string, unknown>) {
         if (type === 'message.delta') {
-          appendTextPart(turn, String(payload['content'] ?? ''))
+          appendAssistantText(turn, String(payload['content'] ?? ''))
           rerender()
         } else if (type === 'message.complete') {
-          completeTextPart(turn, String(payload['content'] ?? ''))
+          completeAssistantText(turn, String(payload['content'] ?? ''))
           rerender()
         } else if (type === 'reasoning.delta') {
-          appendReasoningPart(turn, String(payload['content'] ?? ''))
+          appendAssistantReasoning(turn, String(payload['content'] ?? ''))
           rerender()
         } else if (type === 'tool.call') {
           turn.parts.push({
@@ -141,9 +131,9 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
           }
           rerender()
         } else if (type === 'done') {
-          // stream end
+          // 流结束
         } else if (type === 'error') {
-          appendTextPart(turn, `\n\n[错误] ${String(payload['message'] ?? 'unknown')}`)
+          appendAssistantText(turn, `\n\n[错误] ${String(payload['message'] ?? 'unknown')}`)
           rerender()
         }
       }
@@ -229,38 +219,6 @@ function historyToThreadMessages(history: ThreadUiMessage[]): ThreadMessageLike[
     }
     return { id: m.id, role: m.role, content }
   })
-}
-
-function appendReasoningPart(turn: AssistantTurn, text: string) {
-  if (!text) return
-  const last = turn.parts[turn.parts.length - 1]
-  if (last?.type === 'reasoning') {
-    last.text += text
-  } else {
-    turn.parts.push({ type: 'reasoning', text })
-  }
-}
-
-function appendTextPart(turn: AssistantTurn, text: string) {
-  if (!text) return
-  const last = turn.parts[turn.parts.length - 1]
-  if (last?.type === 'text') {
-    last.text += text
-  } else {
-    turn.parts.push({ type: 'text', text })
-  }
-}
-
-function completeTextPart(turn: AssistantTurn, text: string) {
-  if (!text) return
-  const textParts = turn.parts.filter((part): part is Extract<AssistantTurnPart, { type: 'text' }> =>
-    part.type === 'text')
-  if (textParts.length === 0) {
-    turn.parts.push({ type: 'text', text })
-    return
-  }
-  textParts[0]!.text = text
-  for (const part of textParts.slice(1)) part.text = ''
 }
 
 function stripThinkLeak(text: string): string {
