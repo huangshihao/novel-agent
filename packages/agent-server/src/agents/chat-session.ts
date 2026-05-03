@@ -3,9 +3,6 @@ import {
   SessionManager,
   AuthStorage,
   DefaultResourceLoader,
-  readTool,
-  grepTool,
-  lsTool,
 } from '@mariozechner/pi-coding-agent'
 import type { AgentSession } from '@mariozechner/pi-coding-agent'
 import { existsSync } from 'node:fs'
@@ -59,7 +56,7 @@ export async function createChatAgent(init: ChatAgentInit): Promise<AgentSession
   const { session } = await createAgentSession({
     model: buildAgentModel(),
     thinkingLevel: 'medium',
-    tools: [readTool, grepTool, lsTool],
+    tools: [],
     customTools: buildChatAgentTools(init.novelId, scope),
     sessionManager,
     authStorage,

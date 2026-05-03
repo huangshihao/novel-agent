@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import type { AnalysisEvent } from '@novel-agent/shared'
 import { splitChapters } from '../chapter-splitter.js'
 import { startAnalysis, reaggregate } from '../analyzer.js'
@@ -27,6 +27,7 @@ import {
 } from '../storage/target-reader.js'
 import { readState } from '../storage/state.js'
 import { paths } from '../storage/paths.js'
+import { readChapterRaw, writeChapterRaw } from '../storage/chapter-internal-store.js'
 
 const app = new Hono()
 
@@ -89,9 +90,8 @@ app.post('/', async (c) => {
   const title = providedTitle || file.name.replace(/\.(txt|TXT)$/, '').trim() || '未命名小说'
   const now = Date.now()
 
-  await mkdir(paths.sourceRawDir(id), { recursive: true })
   for (const ch of chapters) {
-    await writeFile(paths.sourceRaw(id, ch.number), ch.content, 'utf8')
+    writeChapterRaw(id, ch.number, ch.content)
   }
 
   await writeNovelIndex({
@@ -138,7 +138,7 @@ app.get('/:id/chapters/:n', async (c) => {
   }
   const ch = await readSourceChapterFull(id, n)
   if (!ch) return c.json({ error: 'not_found' }, 404)
-  const raw = await readFile(paths.sourceRaw(id, n), 'utf8').catch(() => '')
+  const raw = readChapterRaw(id, n)
   return c.json({
     id: n,
     novel_id: id,

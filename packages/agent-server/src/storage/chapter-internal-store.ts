@@ -7,18 +7,51 @@ export interface ChapterInternal {
 }
 
 let initialized = false
+function addColumnIfMissing(table: string, column: string, ddl: string): void {
+  const cols = db().prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  if (!cols.some((c) => c.name === column)) {
+    db().exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`)
+  }
+}
+
 function ensureTable(): void {
   if (initialized) return
   db().exec(`
     CREATE TABLE IF NOT EXISTS chapter_internal (
       novel_id TEXT NOT NULL,
       number INTEGER NOT NULL,
+      raw_text TEXT NOT NULL DEFAULT '',
       summary TEXT NOT NULL DEFAULT '',
       key_events_with_desc TEXT NOT NULL DEFAULT '[]',
       PRIMARY KEY (novel_id, number)
     )
   `)
+  addColumnIfMissing('chapter_internal', 'raw_text', "raw_text TEXT NOT NULL DEFAULT ''")
   initialized = true
+}
+
+export function writeChapterRaw(
+  novelId: string,
+  number: number,
+  rawText: string,
+): void {
+  ensureTable()
+  db()
+    .prepare(
+      `INSERT INTO chapter_internal (novel_id, number, raw_text)
+       VALUES (?, ?, ?)
+       ON CONFLICT(novel_id, number) DO UPDATE SET
+         raw_text = excluded.raw_text`,
+    )
+    .run(novelId, number, rawText)
+}
+
+export function readChapterRaw(novelId: string, number: number): string {
+  ensureTable()
+  const row = db()
+    .prepare('SELECT raw_text FROM chapter_internal WHERE novel_id = ? AND number = ?')
+    .get(novelId, number) as { raw_text: string } | undefined
+  return row?.raw_text ?? ''
 }
 
 export function writeChapterInternal(

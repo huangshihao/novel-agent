@@ -84,7 +84,7 @@ export function buildWriteChapterOutlineTool(
     promptSnippet: 'writeChapterOutline({number, plot_functions, key_events:[{function,new_carrier}], ...})',
     promptGuidelines: [
       `本批范围：${batch.from}-${batch.to}。number 必须在此范围内`,
-      '**调用前**：必须先调 getOutlineContext({number}) 拿 source 的 plot_functions / key_events[].function / originality_risks。**不要**直接 read source/chapters/*.md——desc 会污染你的载体设计',
+      '**调用前**：必须先调 getOutlineContext({number}) 拿 source 的 plot_functions / key_events[].function / originality_risks。按 function-level 信息从零设计新载体',
       '**plot_functions 必须 = getOutlineContext 返回的 source.plot_functions**（按数组原样抄，一个不能少）。这是本章必须实现的剧情功能槽',
       '**key_events 是 {function, new_carrier} 数组**：每个 function 字段从 source.key_events[i].function 抄过来；new_carrier 是你为这个 function 设计的**全新具体载体**（地点/动作/物件/对手身份/触发条件全换）',
       '**source.key_events[i].can_replace=false** 时：function 必须保留，载体可换但不能跳过这个事件',

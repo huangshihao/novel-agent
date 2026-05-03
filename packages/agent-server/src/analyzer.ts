@@ -4,13 +4,12 @@
 //
 // 外部入口：startAnalysis(novelId) —— 异步起飞，通过 event-bus 广播进度。
 
-import { readFile } from 'node:fs/promises'
 import { DeepSeekClient, DeepSeekError, pMap } from './deepseek-client.js'
 import { buildAnalyzerLlmClient } from './lib/llm-client.js'
 import { emitAnalysisEvent } from './event-bus.js'
-import { paths } from './storage/paths.js'
 import { writeSourceChapter } from './storage/source-writer.js'
 import { listSourceChapters, listSourceChaptersFull, wipeSourceAggregates } from './storage/source-reader.js'
+import { readChapterRaw } from './storage/chapter-internal-store.js'
 import {
   writeSourceCharacter,
   writeSourceHooks,
@@ -697,15 +696,12 @@ async function sampleStylePassages(novelId: string, totalChapters: number): Prom
   }
   const samples: string[] = []
   for (const n of indices) {
-    try {
-      const text = await readFile(paths.sourceRaw(novelId, n), 'utf8')
-      const paras = text.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length >= 50 && p.length <= 600)
-      if (paras.length === 0) continue
-      const pick = paras[Math.floor(paras.length / 2)]!
-      samples.push(pick.slice(0, 400))
-    } catch {
-      /* skip */
-    }
+    const text = readChapterRaw(novelId, n)
+    if (!text) continue
+    const paras = text.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length >= 50 && p.length <= 600)
+    if (paras.length === 0) continue
+    const pick = paras[Math.floor(paras.length / 2)]!
+    samples.push(pick.slice(0, 400))
   }
   return samples
 }
@@ -737,7 +733,7 @@ function deferred<T>(): {
 async function runPass1(
   client: DeepSeekClient,
   novelId: string,
-  chapters: { number: number; title: string; rawPath: string }[],
+  chapters: { number: number; title: string }[],
   concurrency: number,
   total: number,
 ): Promise<Map<number, ChapterExtract>> {
@@ -746,7 +742,7 @@ async function runPass1(
   const withContent = await Promise.all(
     chapters.map(async (c) => ({
       ...c,
-      content: await readFile(c.rawPath, 'utf8'),
+      content: readChapterRaw(novelId, c.number),
     })),
   )
 
@@ -1303,12 +1299,11 @@ async function runAnalysis(novelId: string, opts: StartAnalysisOpts): Promise<vo
   })
   emitAnalysisEvent(novelId, { type: 'status', status: 'analyzing' })
 
-  const chaptersInRange: { number: number; title: string; rawPath: string }[] = []
+  const chaptersInRange: { number: number; title: string }[] = []
   for (let n = from; n <= to; n++) {
     chaptersInRange.push({
       number: n,
       title: `第${n}章`,
-      rawPath: paths.sourceRaw(novelId, n),
     })
   }
 

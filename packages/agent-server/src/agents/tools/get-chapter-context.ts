@@ -7,13 +7,14 @@ import {
   readSourceHooks,
   readSourceMeta,
 } from '../../storage/source-reader.js'
+import { sanitizeMapsForAgent } from './context-sanitize.js'
 
 export function buildGetChapterContextTool(novelId: string): ToolDefinition {
   return {
     name: 'getChapterContext',
     label: '获取写章 context 包',
     description:
-      '一次性返回写本章正文需要的全部信息：大纲 + 置换表 + 最近 3 章 target 正文 + 涉及角色状态 + 伏笔状态 + **source 章的 writing_rhythm（节奏指引）/ plot_functions / key_events[].function / originality_risks（避雷）**。第 1 章特殊：附带 source/meta.md 风格样本。',
+      '一次性返回写本章正文需要的全部信息：大纲 + 置换表 + 最近 3 章 target 正文 + 涉及角色状态 + 伏笔状态 + **source 章的 writing_rhythm（节奏指引）/ plot_functions / key_events[].function / originality_risks（避雷）**。不返回原文、章节简介、事件 desc 或风格样本文本。',
     promptSnippet: 'getChapterContext({number}) - 一次拿全写章所需 context',
     promptGuidelines: [
       '写每一章正文前**必须**先调用一次',
@@ -95,7 +96,7 @@ export function buildGetChapterContextTool(novelId: string): ToolDefinition {
 
       const result: Record<string, unknown> = {
         outline,
-        maps,
+        maps: sanitizeMapsForAgent(maps),
         recent_chapters: recent,
         involved_characters,
         involved_hooks,
@@ -118,7 +119,6 @@ export function buildGetChapterContextTool(novelId: string): ToolDefinition {
 
       if (number === 1 || recent.length === 0) {
         const meta = await readSourceMeta(novelId)
-        result['style_samples'] = meta?.style_samples ?? []
         result['style_tags'] = meta?.style_tags ?? []
       }
 

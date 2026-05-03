@@ -4,17 +4,19 @@ import { readMaps, readOutline } from '../../storage/target-reader.js'
 import { readState } from '../../storage/state.js'
 import {
   readSourceChapter,
+  listSourceCharacters,
   readSourceHooks,
   readSourceMeta,
   readSourceSubplots,
 } from '../../storage/source-reader.js'
+import { sanitizeMapsForAgent } from './context-sanitize.js'
 
 export function buildGetOutlineContextTool(novelId: string): ToolDefinition {
   return {
     name: 'getOutlineContext',
     label: '获取写大纲 context 包',
     description:
-      '一次性返回写本章大纲所需的全部 function-level 信息：source 章的 plot_functions / key_events[].function+can_replace+can_reorder+depends_on（**不含 desc / summary**，避免抄载体）/ originality_risks / 涉及的 subplots / maps / state / meta（题材锚点）/ 邻近章节的 outline。**写大纲前必须先调一次。** 不要直接 read source/chapters/*.md 看 desc——那会让你忍不住抄原剧情载体。',
+      '一次性返回写本章大纲所需的全部 function-level 信息：source 章的 plot_functions / key_events[].function+can_replace+can_reorder+depends_on（**不含 desc / summary**，避免抄载体）/ originality_risks / 涉及的 subplots / maps / state / meta（题材锚点）/ source_characters / 邻近章节的 outline。**写大纲前必须先调一次。**',
     promptSnippet: 'getOutlineContext({number}) - 写大纲前必先调',
     promptGuidelines: [
       '写**每一章**大纲前都要调一次',
@@ -26,7 +28,7 @@ export function buildGetOutlineContextTool(novelId: string): ToolDefinition {
       '返回的 nearby_outlines 是邻近章节已写的大纲（前后各 3 章），用来保持新载体连贯、避免和邻章重复',
       '返回的 hook_ledger 是当前钩子账本：overdue=true 或 open_chapters 过长的钩子，需要优先安排阶段性兑现',
       '**maps.character_map[i].source_meta.first_chapter / last_chapter** 限定每个角色出场区间——本章号在区间外的角色不能 referenced_characters 引用，writeChapterOutline 会硬拒',
-      '**禁止**：调完本工具后再 read source/chapters/<n>.md。原书 desc / summary 会污染你的载体设计',
+      '本工具返回的是写大纲所需的完整安全 context；章节简介、原文、事件 desc 不属于写作 agent 输入',
     ],
     parameters: Type.Object({
       number: Type.Number(),
@@ -47,6 +49,7 @@ export function buildGetOutlineContextTool(novelId: string): ToolDefinition {
       const sourceHooks = await readSourceHooks(novelId)
       const meta = await readSourceMeta(novelId)
       const allSubplots = await readSourceSubplots(novelId)
+      const sourceCharacters = await listSourceCharacters(novelId)
 
       const involved_subplots = allSubplots
         .filter((s) => s.chapters.includes(number))
@@ -131,7 +134,17 @@ export function buildGetOutlineContextTool(novelId: string): ToolDefinition {
               style_tags: meta.style_tags,
             }
           : null,
-        maps,
+        maps: sanitizeMapsForAgent(maps),
+        source_characters: sourceCharacters
+          .filter((c) => c.role !== 'tool')
+          .map((c) => ({
+            canonical_name: c.canonical_name,
+            role: c.role,
+            story_function: c.story_function,
+            replaceability: c.replaceability,
+            first_chapter: c.first_chapter,
+            last_chapter: c.last_chapter,
+          })),
         involved_subplots,
         open_hooks,
         hook_ledger,
