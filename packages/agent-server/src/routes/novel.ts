@@ -25,6 +25,7 @@ import {
   readMaps,
   readOutline,
 } from '../storage/target-reader.js'
+import { deleteDraftsFrom, deleteOutlinesFrom } from '../storage/target-delete.js'
 import { readState } from '../storage/state.js'
 import { paths } from '../storage/paths.js'
 import { readChapterRaw, writeChapterRaw } from '../storage/chapter-internal-store.js'
@@ -256,6 +257,14 @@ app.get('/:id/outlines/:n', async (c) => {
   return o ? c.json(o) : c.json({ error: 'not_found' }, 404)
 })
 
+app.delete('/:id/outlines/:n', async (c) => {
+  const n = Number(c.req.param('n'))
+  if (!Number.isInteger(n) || n < 1) {
+    return c.json({ error: 'invalid_chapter' }, 400)
+  }
+  return c.json(await deleteOutlinesFrom(c.req.param('id'), n))
+})
+
 app.get('/:id/drafts', async (c) => {
   const list = await listChapterDrafts(c.req.param('id'))
   return c.json(list.map(({ content: _content, ...rest }) => rest))
@@ -264,6 +273,14 @@ app.get('/:id/drafts', async (c) => {
 app.get('/:id/drafts/:n', async (c) => {
   const d = await readChapterDraft(c.req.param('id'), Number(c.req.param('n')))
   return d ? c.json(d) : c.json({ error: 'not_found' }, 404)
+})
+
+app.delete('/:id/drafts/:n', async (c) => {
+  const n = Number(c.req.param('n'))
+  if (!Number.isInteger(n) || n < 1) {
+    return c.json({ error: 'invalid_chapter' }, 400)
+  }
+  return c.json(await deleteDraftsFrom(c.req.param('id'), n))
 })
 
 // ─── SSE ─────────────────────────────────────────────────────────────────

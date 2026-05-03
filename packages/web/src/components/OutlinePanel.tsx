@@ -1,13 +1,28 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
 import clsx from 'clsx'
+import { useConfirm } from '../lib/use-confirm.js'
 
 interface Props {
   novelId: string
 }
 
+function TrashIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v5" />
+      <path d="M14 11v5" />
+    </svg>
+  )
+}
+
 export function OutlinePanel({ novelId }: Props) {
+  const confirm = useConfirm()
+  const queryClient = useQueryClient()
   const { data: outlines } = useQuery({
     queryKey: ['outlines', novelId],
     queryFn: () => api.listOutlines(novelId),
@@ -15,6 +30,27 @@ export function OutlinePanel({ novelId }: Props) {
   })
 
   const [selected, setSelected] = useState<number | null>(null)
+  const deleteMut = useMutation({
+    mutationFn: (number: number) => api.deleteOutlinesFrom(novelId, number),
+    onSuccess: async (_result, number) => {
+      if (selected != null && selected >= number) setSelected(null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['outlines', novelId] }),
+        queryClient.invalidateQueries({ queryKey: ['drafts', novelId] }),
+        queryClient.invalidateQueries({ queryKey: ['state', novelId] }),
+      ])
+    },
+  })
+
+  const onDelete = async (number: number) => {
+    const ok = await confirm({
+      title: '删除大纲',
+      message: `删除第 ${number} 章及之后所有大纲？对应正文也会一起删除。`,
+      confirmLabel: '删除',
+      tone: 'danger',
+    })
+    if (ok) await deleteMut.mutateAsync(number)
+  }
 
   return (
     <div className="flex h-full">
@@ -29,18 +65,30 @@ export function OutlinePanel({ novelId }: Props) {
             <li
               key={o.number}
               className={clsx(
-                'border-b border-[var(--line)]',
+                'group border-b border-[var(--line)]',
                 selected === o.number
                   ? 'bg-[rgba(242,223,201,0.68)] shadow-[inset_3px_0_0_var(--accent)]'
                   : 'hover:bg-[rgba(255,255,252,0.62)]',
               )}
             >
-              <button
-                onClick={() => setSelected(o.number)}
-                className="w-full text-left px-3 py-2 text-sm"
-              >
-                第 {o.number} 章
-              </button>
+              <div className="flex items-center gap-1 pr-2">
+                <button
+                  onClick={() => setSelected(o.number)}
+                  className="min-w-0 flex-1 px-3 py-2 text-left text-sm"
+                >
+                  第 {o.number} 章
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onDelete(o.number)}
+                  disabled={deleteMut.isPending}
+                  title="删除"
+                  aria-label={`删除第 ${o.number} 章及之后大纲`}
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-neutral-400 opacity-0 transition-[opacity,color,background-color] hover:bg-red-50 hover:text-red-700 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 group-hover:opacity-100 disabled:opacity-40"
+                >
+                  <TrashIcon />
+                </button>
+              </div>
             </li>
           ))}
         </ul>

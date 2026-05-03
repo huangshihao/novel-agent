@@ -68,10 +68,18 @@ export const api = {
     fetch(`/api/novel/${id}/outlines`).then(j<OutlineRecord[]>),
   getOutline: (id: string, n: number) =>
     fetch(`/api/novel/${id}/outlines/${n}`).then(j<OutlineRecord>),
+  deleteOutlinesFrom: (id: string, n: number) =>
+    fetch(`/api/novel/${id}/outlines/${n}`, { method: 'DELETE' }).then(
+      j<{ deletedOutlines: number[]; deletedDrafts: number[] }>,
+    ),
   listDrafts: (id: string) =>
     fetch(`/api/novel/${id}/drafts`).then(j<ChapterDraftSummary[]>),
   getDraft: (id: string, n: number) =>
     fetch(`/api/novel/${id}/drafts/${n}`).then(j<ChapterDraftRecord>),
+  deleteDraftsFrom: (id: string, n: number) =>
+    fetch(`/api/novel/${id}/drafts/${n}`, { method: 'DELETE' }).then(
+      j<{ deletedDrafts: number[] }>,
+    ),
   getState: (id: string) =>
     fetch(`/api/novel/${id}/state`).then(j<StateRecord | null>),
 }
