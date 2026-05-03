@@ -4,16 +4,16 @@ import type { StateRecord } from '../storage/state.js'
 import {
   validateAlive,
   validateChapterContent,
-  validateNames,
   validateSettingTerms,
+  validateSourceNameLeak,
   type ValidationContext,
 } from './validator.js'
 
 function makeCtx(overrides: Partial<{ maps: MapsRecord; state: StateRecord }> = {}): ValidationContext {
   const maps: MapsRecord = overrides.maps ?? {
     character_map: [
-      { source: '张三', target: '李四' },
-      { source: '王五', target: '赵六' },
+      { source: '张三', target: '李四', source_meta: null, target_note: null },
+      { source: '王五', target: '赵六', source_meta: null, target_note: null },
     ],
     setting_map: {
       original_industry: '程序员',
@@ -42,7 +42,7 @@ describe('validateChapterContent', () => {
   it('flags dead character appearing in content', () => {
     const ctx = makeCtx({
       maps: {
-        character_map: [{ source: '张三', target: '李四' }],
+        character_map: [{ source: '张三', target: '李四', source_meta: null, target_note: null }],
         setting_map: null,
       },
       state: {
@@ -60,19 +60,19 @@ describe('validateChapterContent', () => {
     expect(issue!.hits).toContain('李四')
   })
 
-  it('flags unregistered name with trigger verb', () => {
+  it('flags source-name leak (forgot to replace original book name)', () => {
     const ctx = makeCtx()
-    const content = '陈大伟说："你们都错了。"'
-    const issue = validateNames(content, ctx)
+    const content = '张三说："你们都错了。"'
+    const issue = validateSourceNameLeak(content, ctx)
     expect(issue).not.toBeNull()
     expect(issue!.level).toBe('error')
-    expect(issue!.hits).toContain('陈大伟')
+    expect(issue!.hits).toContain('张三')
   })
 
   it('flags setting residue as warning', () => {
     const ctx = makeCtx({
       maps: {
-        character_map: [{ source: '张三', target: '李四' }],
+        character_map: [{ source: '张三', target: '李四', source_meta: null, target_note: null }],
         setting_map: {
           original_industry: '程序员',
           target_industry: '修仙',
@@ -90,7 +90,7 @@ describe('validateChapterContent', () => {
   it('does not produce setting warning when setting_map is null', () => {
     const ctx = makeCtx({
       maps: {
-        character_map: [{ source: '张三', target: '李四' }],
+        character_map: [{ source: '张三', target: '李四', source_meta: null, target_note: null }],
         setting_map: null,
       },
     })
@@ -106,9 +106,9 @@ describe('validateChapterContent', () => {
     expect(validateChapterContent(content, ctx)).toEqual([])
   })
 
-  it('does not flag a name without trigger verb (lenient on prose)', () => {
+  it('does not flag when content uses only target names', () => {
     const ctx = makeCtx()
-    const content = '陈大伟，是这里最年长的人。'
-    expect(validateNames(content, ctx)).toBeNull()
+    const content = '李四低头看着脚下的石阶，赵六小声开口说话。'
+    expect(validateSourceNameLeak(content, ctx)).toBeNull()
   })
 })

@@ -1,4 +1,5 @@
 import matter from 'gray-matter'
+import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile, readdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
@@ -30,7 +31,7 @@ export async function writeMd(
   await mkdir(dirname(path), { recursive: true })
   const cleaned = stripUndefined(frontMatter) as Record<string, unknown>
   const content = matter.stringify(body, cleaned)
-  const tmp = `${path}.tmp`
+  const tmp = `${path}.${randomUUID()}.tmp`
   await writeFile(tmp, content, 'utf8')
   await rename(tmp, path)
 }

@@ -28,6 +28,61 @@ export interface Chapter {
   title: string
   original_text: string
   summary: string | null
+  plot_functions?: string[]
+  key_events?: KeyEventEntry[]
+  originality_risks?: string[]
+  writing_rhythm?: WritingRhythm | null
+}
+
+// 每个关键事件的功能化标签 — 改写时按 function 重做载体而不是抄 desc
+export interface KeyEventEntry {
+  desc: string
+  function: string
+  can_replace: boolean
+  can_reorder: boolean
+  depends_on: string[]
+}
+
+// 章节写作节奏(改写正文时按此匹配 beat / 情绪曲线)
+// 只保留对正文生成最有指导意义的 5 个维度,其余信息已在 key_events / meta.style_samples 里覆盖
+export interface WritingRhythm {
+  text_composition: {
+    action_narration_ratio: string
+    dialogue_ratio: string
+    inner_monologue_ratio: string
+    exposition_ratio: string
+    description_ratio: string
+    conflict_ratio: string
+    summary_transition_ratio: string
+  }
+  pacing_profile: {
+    opening_speed: string
+    middle_speed: string
+    ending_speed: string
+    overall_rhythm: string
+  }
+  emotional_curve: {
+    opening_emotion: string
+    middle_emotion: string
+    climax_emotion: string
+    ending_emotion: string
+    emotion_shift_points: Array<{
+      position: string
+      from: string
+      to: string
+      trigger: string
+    }>
+  }
+  reader_attention_design: {
+    opening_hook: string
+    micro_hooks: string[]
+    chapter_end_hook: string
+  }
+  chapter_writing_pattern: {
+    structure_type: string
+    beat_sequence: string[]
+    core_rhythm: string
+  }
 }
 
 export type CharacterRole =
@@ -39,6 +94,20 @@ export type CharacterRole =
   | 'side'
   | 'tool'
 
+export type CharacterStoryFunction =
+  | 'pressure-source'
+  | 'benefactor'
+  | 'rival'
+  | 'witness'
+  | 'resource-gateway'
+  | 'emotional-anchor'
+  | 'antagonist-proxy'
+  | 'foil'
+  | 'information-source'
+  | 'gatekeeper'
+
+export type Replaceability = 'high' | 'medium' | 'low'
+
 export interface Character {
   id: number
   novel_id: string
@@ -46,6 +115,8 @@ export interface Character {
   aliases: string[]
   role: CharacterRole | null
   function_tags: string[]
+  story_function: CharacterStoryFunction | null
+  replaceability: Replaceability | null
   death_chapter: number | null
   description: string
   first_chapter: number
@@ -64,6 +135,9 @@ export interface Subplot {
   novel_id: string
   name: string
   function: SubplotFunction | null
+  delivers: string
+  depends_on: string[]
+  reorderable: boolean
   description: string
   start_chapter: number
   end_chapter: number
@@ -100,28 +174,51 @@ export type AnalysisEvent =
   | { type: 'done' }
   | { type: 'error'; message: string }
 
-export type AgentRole = 'outline' | 'writer'
-
-export interface AgentSessionInfo {
+export interface ChatInfo {
   id: string
-  role: AgentRole
-  batch: { from: number; to: number }
-  created_at: number
+  novel_id: string
+  title: string
+  created_at: string
+  last_msg_at: string
+  last_user_text: string
 }
+
+export type ActiveTask = { chatId: string } | null
 
 export type AgentEvent =
   | { type: 'message.delta'; content: string }
   | { type: 'message.complete'; content: string }
-  | { type: 'tool.call'; name: string; params: unknown }
-  | { type: 'tool.result'; name: string; result: unknown }
+  | { type: 'tool.call'; id: string; name: string; params: unknown }
+  | { type: 'tool.result'; id: string; name: string; result: unknown }
   | { type: 'done' }
   | { type: 'error'; message: string }
 
+export type ThreadUiMessagePart =
+  | { type: 'text'; text: string }
+  | { type: 'reasoning'; text: string }
+  | { type: 'tool-call'; id: string; name: string; args: unknown; result?: unknown }
+
+export interface ThreadUiMessage {
+  id: string
+  role: 'user' | 'assistant'
+  parts: ThreadUiMessagePart[]
+}
+
 // Target (rewrite) records — shared between agent-server storage and web client
+export interface CharacterSourceMeta {
+  role: string | null
+  story_function: string | null
+  replaceability: string | null
+  first_chapter: number | null
+  last_chapter: number | null
+  description: string
+}
+
 export interface CharacterMapEntry {
-  source: string
+  source: string | null
   target: string
-  note?: string
+  source_meta: CharacterSourceMeta | null
+  target_note: string | null
 }
 
 export interface SettingMap {
@@ -135,9 +232,15 @@ export interface MapsRecord {
   setting_map: SettingMap | null
 }
 
+export interface OutlineKeyEvent {
+  function: string
+  new_carrier: string
+}
+
 export interface OutlineRecord {
   number: number
   source_chapter_ref: number
+  plot_functions: string[]
   hooks_to_plant: string[]
   hooks_to_payoff: string[]
   planned_state_changes: {
@@ -145,7 +248,8 @@ export interface OutlineRecord {
     new_settings: string[]
   }
   plot: string
-  key_events: string[]
+  key_events: OutlineKeyEvent[]
+  referenced_characters: string[]
 }
 
 export interface ChapterDraftRecord {

@@ -17,7 +17,7 @@ export function MapsPanel({ novelId }: { novelId: string }) {
   }
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="h-full overflow-y-auto space-y-6 p-4">
       <section>
         <h3 className="font-medium mb-3 text-sm text-neutral-700">角色置换</h3>
         <table className="w-full text-sm border border-neutral-200 rounded">
@@ -25,17 +25,25 @@ export function MapsPanel({ novelId }: { novelId: string }) {
             <tr>
               <th className="text-left p-2 border-b border-neutral-200">原名</th>
               <th className="text-left p-2 border-b border-neutral-200">新名</th>
-              <th className="text-left p-2 border-b border-neutral-200">备注</th>
+              <th className="text-left p-2 border-b border-neutral-200">出场区间</th>
+              <th className="text-left p-2 border-b border-neutral-200">源端 description / target 备注</th>
             </tr>
           </thead>
           <tbody>
-            {maps.character_map.map((e) => (
-              <tr key={e.source} className="border-b border-neutral-100 last:border-b-0">
-                <td className="p-2 font-mono text-xs">{e.source}</td>
-                <td className="p-2">{e.target}</td>
-                <td className="p-2 text-neutral-500 text-xs">{e.note ?? '—'}</td>
-              </tr>
-            ))}
+            {maps.character_map.map((e) => {
+              const range = e.source_meta
+                ? `${e.source_meta.first_chapter ?? '?'}–${e.source_meta.last_chapter ?? '?'}`
+                : '—'
+              const note = e.source_meta?.description || e.target_note || '—'
+              return (
+                <tr key={e.target} className="border-b border-neutral-100 last:border-b-0">
+                  <td className="p-2 font-mono text-xs">{e.source ?? <em className="text-amber-600">target 自创</em>}</td>
+                  <td className="p-2">{e.target}</td>
+                  <td className="p-2 text-neutral-500 text-xs">{range}</td>
+                  <td className="p-2 text-neutral-500 text-xs">{note}</td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </section>

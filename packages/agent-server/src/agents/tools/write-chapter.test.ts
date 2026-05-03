@@ -28,6 +28,7 @@ function makeOutline(overrides: Partial<OutlineRecord> = {}): OutlineRecord {
   return {
     number: overrides.number ?? 1,
     source_chapter_ref: overrides.source_chapter_ref ?? 1,
+    plot_functions: overrides.plot_functions ?? [],
     hooks_to_plant: overrides.hooks_to_plant ?? [],
     hooks_to_payoff: overrides.hooks_to_payoff ?? [],
     planned_state_changes: overrides.planned_state_changes ?? {
@@ -36,6 +37,7 @@ function makeOutline(overrides: Partial<OutlineRecord> = {}): OutlineRecord {
     },
     plot: overrides.plot ?? '剧情简述',
     key_events: overrides.key_events ?? [],
+    referenced_characters: overrides.referenced_characters ?? [],
   }
 }
 
@@ -54,7 +56,7 @@ async function execTool(
 describe('buildWriteChapterTool', () => {
   it('hard-rejects when content mentions a dead character; file is NOT written', async () => {
     await writeMaps(novelId, {
-      character_map: [{ source: '原主角', target: '林清月' }],
+      character_map: [{ source: '原主角', target: '林清月', source_meta: null, target_note: null }],
       setting_map: null,
     })
     const seeded: StateRecord = {
@@ -89,7 +91,7 @@ describe('buildWriteChapterTool', () => {
 
   it('soft-warns on short content but still writes the chapter', async () => {
     await writeMaps(novelId, {
-      character_map: [{ source: '原主角', target: '林清月' }],
+      character_map: [{ source: '原主角', target: '林清月', source_meta: null, target_note: null }],
       setting_map: null,
     })
     await writeState(novelId, {
@@ -115,7 +117,7 @@ describe('buildWriteChapterTool', () => {
     }
     expect(details.ok).toBe(true)
     expect(details.warnings.length).toBeGreaterThan(0)
-    expect(details.warnings.some((w) => w.message.includes('字数偏离合理范围'))).toBe(true)
+    expect(details.warnings.some((w) => w.message.includes('字数'))).toBe(true)
 
     expect(existsSync(paths.targetChapter(novelId, 1))).toBe(true)
   })
@@ -123,8 +125,8 @@ describe('buildWriteChapterTool', () => {
   it('happy path: writes the chapter and mutates state (last_seen_chapter advanced)', async () => {
     await writeMaps(novelId, {
       character_map: [
-        { source: '原主角', target: '林清月' },
-        { source: '原配角', target: '苏景行' },
+        { source: '原主角', target: '林清月', source_meta: null, target_note: null },
+        { source: '原配角', target: '苏景行', source_meta: null, target_note: null },
       ],
       setting_map: null,
     })
@@ -140,9 +142,9 @@ describe('buildWriteChapterTool', () => {
 
     const goodContent =
       '林清月推开窗，望向远山。苏景行站在她身后。' +
-      '夜风掠过竹林，远处传来悠长的钟声。'.repeat(220)
-    expect(goodContent.length).toBeGreaterThanOrEqual(3000)
-    expect(goodContent.length).toBeLessThanOrEqual(5000)
+      '夜风掠过竹林，远处传来悠长的钟声。'.repeat(160)
+    expect(goodContent.length).toBeGreaterThanOrEqual(2000)
+    expect(goodContent.length).toBeLessThanOrEqual(3000)
 
     const result = await execTool(
       novelId,

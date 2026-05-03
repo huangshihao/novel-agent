@@ -1,7 +1,20 @@
-import { Link, Outlet } from 'react-router-dom'
+import { Link, Outlet, useLocation } from 'react-router-dom'
 import { ConfirmProvider } from './lib/use-confirm.js'
 
 export function App() {
+  const { pathname } = useLocation()
+  const fullBleed = pathname.endsWith('/rewrite')
+
+  if (fullBleed) {
+    return (
+      <ConfirmProvider>
+        <div className="h-screen bg-neutral-50 text-neutral-900">
+          <Outlet />
+        </div>
+      </ConfirmProvider>
+    )
+  }
+
   return (
     <ConfirmProvider>
       <div className="min-h-screen bg-neutral-50 text-neutral-900">

@@ -1,3 +1,4 @@
+import type { Dirent } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { paths } from './paths.js'
 import { readMdIfExists, writeMd } from './markdown.js'
@@ -33,17 +34,18 @@ export async function readNovelIndex(id: string): Promise<NovelIndex | null> {
 }
 
 export async function listNovelIndices(): Promise<NovelIndex[]> {
-  let dirs: string[]
+  let entries: Dirent[]
   try {
-    dirs = await readdir(paths.root())
+    entries = await readdir(paths.root(), { withFileTypes: true })
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw err
   }
   const out: NovelIndex[] = []
-  for (const d of dirs) {
-    if (d.startsWith('.')) continue
-    const f = await readMdIfExists<NovelIndex>(paths.novelIndex(d))
+  for (const e of entries) {
+    if (!e.isDirectory()) continue
+    if (e.name.startsWith('.')) continue
+    const f = await readMdIfExists<NovelIndex>(paths.novelIndex(e.name))
     if (f) out.push(f.frontMatter)
   }
   return out

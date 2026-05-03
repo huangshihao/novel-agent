@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readMd } from './markdown.js'
 import { paths } from './paths.js'
+import { readChapterInternal } from './chapter-internal-store.js'
 import {
   writeSourceChapter,
   writeSourceCharacter,
@@ -20,7 +21,7 @@ beforeEach(() => {
 afterEach(() => rmSync(tmp, { recursive: true, force: true }))
 
 describe('source-writer', () => {
-  it('writeSourceChapter writes front matter + summary + events sections', async () => {
+  it('writeSourceChapter writes function-only fm and routes desc/summary to sqlite', async () => {
     await writeSourceChapter('nv-1', {
       number: 5,
       title: '觉醒',
@@ -29,15 +30,28 @@ describe('source-writer', () => {
       hooks_paid: [],
       hooks_planted_candidates: [{ desc: 'foo', category: 'secret' }],
       summary: '张三激活异能。',
-      key_events: ['张三激活异能', '李四逃走'],
+      key_events: [
+        { desc: '张三激活异能', function: '主角优势暴露', can_replace: true, can_reorder: false, depends_on: [] },
+        { desc: '李四逃走', function: '压迫源退场', can_replace: true, can_reorder: true, depends_on: [] },
+      ],
+      plot_functions: ['主角优势首秀'],
+      originality_risks: [],
+      writing_rhythm: null,
     })
     const md = await readMd(paths.sourceChapter('nv-1', 5))
     expect(md.frontMatter['number']).toBe(5)
     expect(md.frontMatter['_hooks_planted_candidates']).toEqual([{ desc: 'foo', category: 'secret' }])
-    expect(md.body).toContain('## 摘要')
-    expect(md.body).toContain('张三激活异能。')
-    expect(md.body).toContain('## 关键事件')
-    expect(md.body).toContain('- 张三激活异能')
+    expect(md.frontMatter['plot_functions']).toEqual(['主角优势首秀'])
+    const events = md.frontMatter['key_events'] as Record<string, unknown>[]
+    expect(events[0]?.['function']).toBe('主角优势暴露')
+    expect(events[0]?.['desc']).toBeUndefined()
+    expect(md.body).not.toContain('## 摘要')
+    expect(md.body).not.toContain('张三激活异能')
+
+    const internal = readChapterInternal('nv-1', 5)
+    expect(internal?.summary).toBe('张三激活异能。')
+    expect(internal?.key_events_with_desc[0]?.desc).toBe('张三激活异能')
+    expect(internal?.key_events_with_desc[1]?.desc).toBe('李四逃走')
   })
 
   it('writeSourceCharacter writes role + death_chapter to front matter', async () => {
@@ -46,6 +60,8 @@ describe('source-writer', () => {
       aliases: ['老张'],
       role: 'protagonist',
       function_tags: ['茶馆老板'],
+      story_function: null,
+      replaceability: 'low',
       first_chapter: 1,
       last_chapter: 100,
       death_chapter: null,
@@ -53,6 +69,7 @@ describe('source-writer', () => {
     })
     const md = await readMd(paths.sourceCharacter('nv-1', '张三'))
     expect(md.frontMatter['role']).toBe('protagonist')
+    expect(md.frontMatter['replaceability']).toBe('low')
     expect(md.frontMatter['death_chapter']).toBeNull()
     expect(md.body).toContain('## 描述')
     expect(md.body).toContain('主角。')
@@ -60,11 +77,21 @@ describe('source-writer', () => {
 
   it('writeSourceSubplots writes single file with array', async () => {
     await writeSourceSubplots('nv-1', [
-      { id: 'sp-1', name: '茶馆扩张', function: 'establish-setting', chapters: [3, 5], description: '主角扩张茶馆。' },
+      {
+        id: 'sp-1',
+        name: '茶馆扩张',
+        function: 'establish-setting',
+        delivers: '给主角带来第一份外部资源',
+        depends_on: [],
+        reorderable: true,
+        chapters: [3, 5],
+        description: '主角扩张茶馆。',
+      },
     ])
     const md = await readMd(paths.sourceSubplots('nv-1'))
-    const subs = md.frontMatter['subplots'] as { id: string }[] | undefined
+    const subs = md.frontMatter['subplots'] as { id: string; delivers: string }[] | undefined
     expect(subs?.[0]?.id).toBe('sp-1')
+    expect(subs?.[0]?.delivers).toBe('给主角带来第一份外部资源')
   })
 
   it('writeSourceHooks writes long-only hooks (no type field)', async () => {

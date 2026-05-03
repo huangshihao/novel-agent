@@ -14,23 +14,19 @@ export interface ValidationContext {
   state: StateRecord
 }
 
-export function validateNames(
+export function validateSourceNameLeak(
   content: string,
   ctx: ValidationContext,
 ): ValidationIssue | null {
-  const known = new Set(ctx.maps.character_map.map((e) => e.target))
-  const unregistered: Set<string> = new Set()
-  const re = /([一-龥]{2,4})(?=说|笑|看|走|站|坐|回头|拿|抬头|皱眉|开口)/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(content)) !== null) {
-    const name = m[1]!
-    if (!known.has(name) && name.length >= 2) unregistered.add(name)
+  const leaks: string[] = []
+  for (const entry of ctx.maps.character_map) {
+    if (entry.source !== null && content.includes(entry.source)) leaks.push(entry.source)
   }
-  if (unregistered.size === 0) return null
+  if (leaks.length === 0) return null
   return {
     level: 'error',
-    message: `检测到 ${unregistered.size} 个未在 character_map 注册的疑似人名`,
-    hits: [...unregistered],
+    message: `${leaks.length} 个原书人名未替换为 target 名`,
+    hits: leaks,
   }
 }
 
@@ -73,7 +69,7 @@ export function validateChapterContent(
   ctx: ValidationContext,
 ): ValidationIssue[] {
   return [
-    validateNames(content, ctx),
+    validateSourceNameLeak(content, ctx),
     validateAlive(content, ctx),
     validateSettingTerms(content, ctx),
   ].filter((x): x is ValidationIssue => x !== null)

@@ -33,6 +33,7 @@ function makeOutline(overrides: Partial<OutlineRecord>): OutlineRecord {
   return {
     number: overrides.number ?? 1,
     source_chapter_ref: overrides.source_chapter_ref ?? 1,
+    plot_functions: overrides.plot_functions ?? [],
     hooks_to_plant: overrides.hooks_to_plant ?? [],
     hooks_to_payoff: overrides.hooks_to_payoff ?? [],
     planned_state_changes: overrides.planned_state_changes ?? {
@@ -41,6 +42,7 @@ function makeOutline(overrides: Partial<OutlineRecord>): OutlineRecord {
     },
     plot: overrides.plot ?? '',
     key_events: overrides.key_events ?? [],
+    referenced_characters: overrides.referenced_characters ?? [],
   }
 }
 
@@ -48,8 +50,8 @@ describe('state', () => {
   it('initStateIfMissing seeds alive_status from character_map and hooks from source hooks', async () => {
     await writeMaps('nv-1', {
       character_map: [
-        { source: '张三', target: '李一' },
-        { source: '王五', target: '赵二', note: '改性别' },
+        { source: '张三', target: '李一', source_meta: null, target_note: null },
+        { source: '王五', target: '赵二', source_meta: null, target_note: '改性别' },
       ],
       setting_map: null,
     })
@@ -75,7 +77,7 @@ describe('state', () => {
 
   it('initStateIfMissing returns existing state unchanged', async () => {
     await writeMaps('nv-1', {
-      character_map: [{ source: 'A', target: 'B' }],
+      character_map: [{ source: 'A', target: 'B', source_meta: null, target_note: null }],
       setting_map: null,
     })
     await writeSourceHooks('nv-1', [makeHook('hk-001', 'x')])
@@ -104,8 +106,8 @@ describe('state', () => {
   it('applyChapterStateDiff records character deaths from planned_state_changes', async () => {
     await writeMaps('nv-1', {
       character_map: [
-        { source: '原A', target: '甲' },
-        { source: '原B', target: '乙' },
+        { source: '原A', target: '甲', source_meta: null, target_note: null },
+        { source: '原B', target: '乙', source_meta: null, target_note: null },
       ],
       setting_map: null,
     })
@@ -135,7 +137,7 @@ describe('state', () => {
 
   it('applyChapterStateDiff pays off a source hook', async () => {
     await writeMaps('nv-1', {
-      character_map: [{ source: 'A', target: 'B' }],
+      character_map: [{ source: 'A', target: 'B', source_meta: null, target_note: null }],
       setting_map: null,
     })
     await writeSourceHooks('nv-1', [
@@ -158,7 +160,7 @@ describe('state', () => {
 
   it('applyChapterStateDiff pays off a new hook entry', async () => {
     await writeMaps('nv-1', {
-      character_map: [{ source: 'A', target: 'B' }],
+      character_map: [{ source: 'A', target: 'B', source_meta: null, target_note: null }],
       setting_map: null,
     })
     await writeSourceHooks('nv-1', [])
@@ -192,7 +194,7 @@ describe('state', () => {
 
   it('applyChapterStateDiff plants a never-seen hook id into new_hooks as open', async () => {
     await writeMaps('nv-1', {
-      character_map: [{ source: 'A', target: 'B' }],
+      character_map: [{ source: 'A', target: 'B', source_meta: null, target_note: null }],
       setting_map: null,
     })
     await writeSourceHooks('nv-1', [makeHook('hk-001', 'src')])

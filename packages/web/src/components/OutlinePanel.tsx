@@ -3,7 +3,11 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
 import clsx from 'clsx'
 
-export function OutlinePanel({ novelId }: { novelId: string }) {
+interface Props {
+  novelId: string
+}
+
+export function OutlinePanel({ novelId }: Props) {
   const { data: outlines } = useQuery({
     queryKey: ['outlines', novelId],
     queryFn: () => api.listOutlines(novelId),
@@ -14,33 +18,35 @@ export function OutlinePanel({ novelId }: { novelId: string }) {
 
   return (
     <div className="flex h-full">
-      <aside className="w-48 border-r border-neutral-200 overflow-y-auto">
-        {!outlines?.length && (
-          <p className="text-xs text-neutral-400 p-3">
-            还没有大纲。让 agent 跑“开始改写本批”。
-          </p>
-        )}
-        {outlines?.map((o) => (
-          <button
-            key={o.number}
-            onClick={() => setSelected(o.number)}
-            className={clsx(
-              'w-full text-left px-3 py-2 text-sm border-b border-neutral-100',
-              selected === o.number ? 'bg-amber-50 text-amber-900' : 'hover:bg-neutral-50',
-            )}
-          >
-            第 {o.number} 章
-          </button>
-        ))}
+      <aside className="w-64 border-r border-neutral-200 overflow-y-auto">
+        <ul>
+          {!outlines?.length && (
+            <li className="text-xs text-neutral-400 p-4">
+              还没有大纲。在右侧启动大纲 agent 生成。
+            </li>
+          )}
+          {outlines?.map((o) => (
+            <li
+              key={o.number}
+              className={clsx(
+                'border-b border-neutral-100',
+                selected === o.number ? 'bg-amber-50' : 'hover:bg-neutral-50',
+              )}
+            >
+              <button
+                onClick={() => setSelected(o.number)}
+                className="w-full text-left px-3 py-2 text-sm"
+              >
+                第 {o.number} 章
+              </button>
+            </li>
+          ))}
+        </ul>
       </aside>
 
       <section className="flex-1 overflow-y-auto p-4">
-        {selected == null && (
-          <p className="text-sm text-neutral-400">选一章查看大纲</p>
-        )}
-        {selected != null && (
-          <OutlineDetail novelId={novelId} number={selected} />
-        )}
+        {selected == null && <p className="text-sm text-neutral-400">选一章查看大纲</p>}
+        {selected != null && <OutlineDetail novelId={novelId} number={selected} />}
       </section>
     </div>
   )
@@ -59,40 +65,47 @@ function OutlineDetail({ novelId, number }: { novelId: string; number: number })
         <h2 className="text-lg font-medium">第 {o.number} 章大纲</h2>
         <span className="text-xs text-neutral-500">参考原书第 {o.source_chapter_ref} 章</span>
       </header>
-
+      <section>
+        <h3 className="text-xs uppercase tracking-wide text-neutral-500 mb-1">剧情功能</h3>
+        {o.plot_functions.length === 0 ? (
+          <p className="text-neutral-400 text-xs">—</p>
+        ) : (
+          <ul className="list-disc list-inside space-y-0.5 text-xs text-neutral-700">
+            {o.plot_functions.map((f, i) => (
+              <li key={i}>{f}</li>
+            ))}
+          </ul>
+        )}
+      </section>
       <section>
         <h3 className="text-xs uppercase tracking-wide text-neutral-500 mb-1">剧情</h3>
         <p className="whitespace-pre-wrap leading-relaxed">{o.plot}</p>
       </section>
-
       <section>
-        <h3 className="text-xs uppercase tracking-wide text-neutral-500 mb-1">关键事件</h3>
-        <ul className="list-disc list-inside space-y-0.5">
+        <h3 className="text-xs uppercase tracking-wide text-neutral-500 mb-1">关键事件（function → 新载体）</h3>
+        <ul className="space-y-1">
           {o.key_events.map((e, i) => (
-            <li key={i}>{e}</li>
+            <li key={i} className="border-l-2 border-amber-200 pl-2">
+              <div className="text-xs text-neutral-500">{e.function || '—'}</div>
+              <div>{e.new_carrier}</div>
+            </li>
           ))}
         </ul>
       </section>
-
       <section className="grid grid-cols-2 gap-4 text-xs">
         <div>
           <h4 className="text-neutral-500 mb-1">本章新埋伏笔</h4>
-          {o.hooks_to_plant.length === 0 ? (
-            <p className="text-neutral-400">—</p>
-          ) : (
+          {o.hooks_to_plant.length === 0 ? <p className="text-neutral-400">—</p> : (
             <ul>{o.hooks_to_plant.map((id) => <li key={id} className="font-mono">{id}</li>)}</ul>
           )}
         </div>
         <div>
           <h4 className="text-neutral-500 mb-1">本章兑现伏笔</h4>
-          {o.hooks_to_payoff.length === 0 ? (
-            <p className="text-neutral-400">—</p>
-          ) : (
+          {o.hooks_to_payoff.length === 0 ? <p className="text-neutral-400">—</p> : (
             <ul>{o.hooks_to_payoff.map((id) => <li key={id} className="font-mono">{id}</li>)}</ul>
           )}
         </div>
       </section>
-
       {o.planned_state_changes.character_deaths.length > 0 && (
         <section className="text-xs">
           <h4 className="text-neutral-500 mb-1">本章死亡声明</h4>

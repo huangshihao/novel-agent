@@ -12,8 +12,8 @@ import {
   updateNovelIndex,
 } from '../storage/novel-index.js'
 import {
-  listSourceChapters,
-  readSourceChapter,
+  listSourceChaptersFull,
+  readSourceChapterFull,
   listSourceCharacters,
   readSourceSubplots,
   readSourceHooks,
@@ -116,7 +116,7 @@ app.post('/', async (c) => {
 
 app.get('/:id/chapters', async (c) => {
   const id = c.req.param('id')
-  const list = await listSourceChapters(id)
+  const list = await listSourceChaptersFull(id)
   return c.json(
     list.map((ch) => ({
       id: ch.number,
@@ -124,6 +124,8 @@ app.get('/:id/chapters', async (c) => {
       number: ch.number,
       title: ch.title,
       summary: ch.summary,
+      plot_functions: ch.plot_functions,
+      originality_risks: ch.originality_risks,
     })),
   )
 })
@@ -134,7 +136,7 @@ app.get('/:id/chapters/:n', async (c) => {
   if (!Number.isFinite(n) || n < 1) {
     return c.json({ error: 'invalid_chapter' }, 400)
   }
-  const ch = await readSourceChapter(id, n)
+  const ch = await readSourceChapterFull(id, n)
   if (!ch) return c.json({ error: 'not_found' }, 404)
   const raw = await readFile(paths.sourceRaw(id, n), 'utf8').catch(() => '')
   return c.json({
@@ -144,6 +146,10 @@ app.get('/:id/chapters/:n', async (c) => {
     title: ch.title,
     original_text: raw,
     summary: ch.summary,
+    plot_functions: ch.plot_functions,
+    key_events: ch.key_events,
+    originality_risks: ch.originality_risks,
+    writing_rhythm: ch.writing_rhythm,
   })
 })
 
@@ -160,6 +166,8 @@ app.get('/:id/characters', async (c) => {
       aliases: ch.aliases,
       role: ch.role,
       function_tags: ch.function_tags,
+      story_function: ch.story_function,
+      replaceability: ch.replaceability,
       death_chapter: ch.death_chapter,
       description: ch.description,
       first_chapter: ch.first_chapter,
@@ -177,6 +185,9 @@ app.get('/:id/subplots', async (c) => {
       novel_id: id,
       name: sp.name,
       function: sp.function,
+      delivers: sp.delivers,
+      depends_on: sp.depends_on,
+      reorderable: sp.reorderable,
       description: sp.description,
       start_chapter: sp.chapters[0] ?? 0,
       end_chapter: sp.chapters[sp.chapters.length - 1] ?? 0,

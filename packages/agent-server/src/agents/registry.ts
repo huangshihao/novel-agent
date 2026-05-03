@@ -1,37 +1,77 @@
 import type { AgentSession } from '@mariozechner/pi-coding-agent'
+import type { ActiveTask } from '@novel-agent/shared'
 
-interface SessionEntry {
+export interface ChatEntry {
   novelId: string
-  role: 'outline' | 'writer'
-  batch: { from: number; to: number }
+  chatId: string
   session: AgentSession
-  createdAt: number
+  isStreaming: boolean
+  closeStream?: () => void
 }
 
-const sessions = new Map<string, SessionEntry>()
+const activeByNovel = new Map<string, ChatEntry>()
 
-function genId(): string {
-  return `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+export interface ClaimChatInput {
+  novelId: string
+  chatId: string
+  session: AgentSession
 }
 
-export function registerSession(entry: Omit<SessionEntry, 'createdAt'>): string {
-  const id = genId()
-  sessions.set(id, { ...entry, createdAt: Date.now() })
-  return id
-}
-
-export function getSession(sessionId: string): SessionEntry | undefined {
-  return sessions.get(sessionId)
-}
-
-export function listSessionsByNovel(novelId: string): { id: string; entry: SessionEntry }[] {
-  const out: { id: string; entry: SessionEntry }[] = []
-  for (const [id, entry] of sessions) {
-    if (entry.novelId === novelId) out.push({ id, entry })
+export function claimChat(input: ClaimChatInput): ChatEntry {
+  const existing = activeByNovel.get(input.novelId)
+  if (existing && existing.chatId !== input.chatId) {
+    throw new Error(`another_chat_active:${existing.chatId}`)
   }
-  return out
+  const entry: ChatEntry = {
+    novelId: input.novelId,
+    chatId: input.chatId,
+    session: input.session,
+    isStreaming: false,
+  }
+  if (existing) {
+    try { existing.session.dispose() } catch { /* ignore */ }
+  }
+  activeByNovel.set(input.novelId, entry)
+  return entry
 }
 
-export function removeSession(sessionId: string): void {
-  sessions.delete(sessionId)
+export function getActiveChat(novelId: string): ActiveTask {
+  const e = activeByNovel.get(novelId)
+  return e ? { chatId: e.chatId } : null
+}
+
+export function getChatEntry(novelId: string, chatId: string): ChatEntry | null {
+  const e = activeByNovel.get(novelId)
+  if (!e || e.chatId !== chatId) return null
+  return e
+}
+
+export function setStreaming(novelId: string, chatId: string, value: boolean): void {
+  const e = activeByNovel.get(novelId)
+  if (e && e.chatId === chatId) e.isStreaming = value
+}
+
+export function setStreamCloser(
+  novelId: string,
+  chatId: string,
+  fn: (() => void) | undefined,
+): void {
+  const e = activeByNovel.get(novelId)
+  if (e && e.chatId === chatId) e.closeStream = fn
+}
+
+export function releaseChat(novelId: string): void {
+  const e = activeByNovel.get(novelId)
+  if (!e) return
+  try { e.closeStream?.() } catch { /* ignore */ }
+  try { e.session.dispose() } catch { /* ignore */ }
+  activeByNovel.delete(novelId)
+}
+
+export function __clearAll(): void {
+  for (const e of activeByNovel.values()) {
+    try { e.closeStream?.() } catch { /* ignore */ }
+    try { e.session.dispose() } catch { /* ignore */ }
+  }
+  activeByNovel.clear()
 }

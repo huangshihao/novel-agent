@@ -23,7 +23,9 @@ export function buildWriteChapterTool(
     promptGuidelines: [
       '调用前先 getChapterContext 拿齐 context',
       '校验失败时按返回的 issues.hits 改正——通常是人名漏注册或者把死了的人写出来了',
-      '正文目标 3000-5000 字（番茄爽文一章合理体量）；< 1000 或 > 8000 会软警告',
+      '正文目标 2200-2500 字；> 2800 字直接 reject 必须重写更短版本，< 2000 字会软警告',
+      '**节奏匹配**：按 source.writing_rhythm.chapter_writing_pattern.beat_sequence 走章内节拍；按 emotional_curve 走情绪曲线；按 text_composition 控制动作/对话/心理/解释配比；按 reader_attention_design 设计开头抓人和章末钩子',
+      '**避雷**：source.originality_risks 列的标志性桥段载体绝不能复刻',
     ],
     parameters: Type.Object({
       number: Type.Number(),
@@ -55,11 +57,13 @@ export function buildWriteChapterTool(
       const state = (await readState(novelId)) ?? (await initStateIfMissing(novelId))
       const issues = validateChapterContent(content, { maps, state })
 
-      const lengthWarn =
-        content.length < 1000 || content.length > 8000
-          ? [{ level: 'warning' as const, message: `字数偏离合理范围（${content.length}）` }]
-          : []
-      const allIssues = [...issues, ...lengthWarn]
+      const lengthIssues =
+        content.length > 2800
+          ? [{ level: 'error' as const, message: `字数 ${content.length} 超过硬上限 2800（目标 2200-2500），必须收束场景重写更短的版本` }]
+          : content.length < 2000
+            ? [{ level: 'warning' as const, message: `字数 ${content.length} 偏短（< 2000，目标 2200-2500）` }]
+            : []
+      const allIssues = [...issues, ...lengthIssues]
 
       if (allIssues.some((i) => i.level === 'error')) {
         const r = { ok: false, issues: allIssues }

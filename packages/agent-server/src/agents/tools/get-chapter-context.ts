@@ -2,19 +2,26 @@ import { Type } from '@sinclair/typebox'
 import type { ToolDefinition } from '@mariozechner/pi-coding-agent'
 import { readMaps, readChapterDraft, readOutline } from '../../storage/target-reader.js'
 import { readState } from '../../storage/state.js'
-import { readSourceHooks, readSourceMeta } from '../../storage/source-reader.js'
+import {
+  readSourceChapter,
+  readSourceHooks,
+  readSourceMeta,
+} from '../../storage/source-reader.js'
 
 export function buildGetChapterContextTool(novelId: string): ToolDefinition {
   return {
     name: 'getChapterContext',
     label: '获取写章 context 包',
     description:
-      '一次性返回写本章正文需要的全部信息：大纲 + 置换表 + 最近 3 章 target 正文 + 涉及角色当前状态（alive/dead）+ 涉及伏笔状态。第 1 章特殊：附带 source/meta.md 的风格样本（学习文风用）。',
+      '一次性返回写本章正文需要的全部信息：大纲 + 置换表 + 最近 3 章 target 正文 + 涉及角色状态 + 伏笔状态 + **source 章的 writing_rhythm（节奏指引）/ plot_functions / key_events[].function / originality_risks（避雷）**。第 1 章特殊：附带 source/meta.md 风格样本。',
     promptSnippet: 'getChapterContext({number}) - 一次拿全写章所需 context',
     promptGuidelines: [
       '写每一章正文前**必须**先调用一次',
+      '**严禁并行调用 / 一次只调一章**：写多章时按 getChapterContext(N) → writeChapter(N) → getChapterContext(N+1) 串行循环。并行 batch 会撑爆 context 让 provider 静默失败',
       '返回的 maps.character_map 是写正文时人名的唯一来源',
       '返回的 alive_status 里 alive===false 的角色不能在正文里有动作（writeChapter 会硬拒）',
+      '返回的 source.writing_rhythm 决定本章节奏：beat_sequence 走顺序、emotional_curve 走情绪、text_composition 走配比、reader_attention_design 走开头/章末钩子',
+      '返回的 source.originality_risks 是改写时**绝对不能照搬**的标志性桥段载体',
     ],
     parameters: Type.Object({
       number: Type.Number(),
@@ -52,12 +59,28 @@ export function buildGetChapterContextTool(novelId: string): ToolDefinition {
         ...outline.hooks_to_payoff.map((id) => ({ ...(hooksMap.get(id) ?? { id, description: '' }), action: 'payoff' as const })),
       ]
 
+      const sourceChapter = await readSourceChapter(novelId, outline.source_chapter_ref)
+
       const result: Record<string, unknown> = {
         outline,
         maps,
         recent_chapters: recent,
         involved_characters,
         involved_hooks,
+        source: sourceChapter
+          ? {
+              chapter_ref: sourceChapter.number,
+              plot_functions: sourceChapter.plot_functions,
+              key_events: sourceChapter.key_events.map((e) => ({
+                function: e.function,
+                can_replace: e.can_replace,
+                can_reorder: e.can_reorder,
+                depends_on: e.depends_on,
+              })),
+              originality_risks: sourceChapter.originality_risks,
+              writing_rhythm: sourceChapter.writing_rhythm,
+            }
+          : null,
       }
 
       if (number === 1 || recent.length === 0) {

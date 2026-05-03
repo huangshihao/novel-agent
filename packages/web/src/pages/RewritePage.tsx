@@ -1,141 +1,65 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
-import { agentApi } from '../lib/agent-api.js'
-import { MapsPanel } from '../components/MapsPanel.js'
-import { OutlinePanel } from '../components/OutlinePanel.js'
-import { DraftsPanel } from '../components/DraftsPanel.js'
-import { StatePanel } from '../components/StatePanel.js'
-import { AgentChat } from '../components/AgentChat.js'
-import clsx from 'clsx'
-
-type Tab = 'maps' | 'outlines' | 'drafts'
+import { chatApi } from '../lib/chat-api.js'
+import { ChatSidebar } from '../components/ChatSidebar.js'
+import { ChatPanel } from '../components/ChatPanel.js'
+import { ArtifactTabs } from '../components/ArtifactTabs.js'
 
 export function RewritePage() {
   const { id = '' } = useParams<{ id: string }>()
-  const { data: novel } = useQuery({
-    queryKey: ['novel', id],
-    queryFn: () => api.getNovel(id),
+  const qc = useQueryClient()
+  const { data: novel } = useQuery({ queryKey: ['novel', id], queryFn: () => api.getNovel(id) })
+  const { data: chats } = useQuery({
+    queryKey: ['chats', id],
+    queryFn: () => chatApi.list(id),
   })
-  const [tab, setTab] = useState<Tab>('maps')
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [batch, setBatch] = useState<{ from: number; to: number }>({ from: 1, to: 1 })
-  const [batchInitialized, setBatchInitialized] = useState(false)
+
+  const [chatId, setChatId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (batchInitialized || !novel || novel.analyzed_to < 1) return
-    setBatch({ from: 1, to: Math.min(novel.analyzed_to, 10) })
-    setBatchInitialized(true)
-  }, [batchInitialized, novel])
+    if (chatId) return
+    if (chats && chats.length > 0) {
+      setChatId(chats[0]!.id)
+    }
+  }, [chats, chatId])
 
-  if (!novel) return <p className="text-sm text-neutral-400">加载中...</p>
+  if (!novel) return <p className="text-sm text-neutral-400 p-4">加载中...</p>
 
-  const maxChapter = novel.analyzed_to
-  const hasAnalyzed = maxChapter >= 1
-  const rangeValid =
-    hasAnalyzed &&
-    batch.from >= 1 &&
-    batch.to >= batch.from &&
-    batch.to <= maxChapter
-
-  const startSession = async (role: 'outline' | 'writer') => {
-    if (!rangeValid) return
-    const resp = role === 'outline'
-      ? await agentApi.startOutline(id, batch.from, batch.to)
-      : await agentApi.startWriter(id, batch.from, batch.to)
-    setSessionId(resp.id)
-  }
+  const currentChat = chats?.find((c) => c.id === chatId)
 
   return (
     <div className="h-screen flex flex-col">
-      <header className="border-b border-neutral-200 px-6 py-3 flex items-center gap-4">
+      <header className="border-b border-neutral-200 px-4 h-12 flex items-center gap-3 shrink-0">
         <Link to={`/novels/${id}`} className="text-sm text-neutral-500 hover:underline">
           ← {novel.title}
         </Link>
-        <div className="flex-1" />
-
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-neutral-500">
-            {hasAnalyzed ? `已分析 1-${maxChapter} 章，本批` : '尚未分析任何章节'}
-          </span>
-          <input
-            type="number"
-            value={batch.from}
-            min={1}
-            max={maxChapter || 1}
-            disabled={!hasAnalyzed}
-            onChange={(e) => setBatch((b) => ({ ...b, from: Number(e.target.value) }))}
-            className="w-16 px-2 py-1 border border-neutral-300 rounded disabled:bg-neutral-100"
-          />
-          <span>—</span>
-          <input
-            type="number"
-            value={batch.to}
-            min={1}
-            max={maxChapter || 1}
-            disabled={!hasAnalyzed}
-            onChange={(e) => setBatch((b) => ({ ...b, to: Number(e.target.value) }))}
-            className="w-16 px-2 py-1 border border-neutral-300 rounded disabled:bg-neutral-100"
-          />
-          <button
-            onClick={() => startSession('outline')}
-            disabled={!rangeValid}
-            title={!rangeValid ? '请选 1-' + maxChapter + ' 范围内的有效区间' : ''}
-            className="px-3 py-1 rounded bg-amber-500 text-white text-xs disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            启动大纲 agent
-          </button>
-          <button
-            onClick={() => startSession('writer')}
-            disabled={!rangeValid}
-            title={!rangeValid ? '请选 1-' + maxChapter + ' 范围内的有效区间' : ''}
-            className="px-3 py-1 rounded bg-emerald-500 text-white text-xs disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            启动写作 agent
-          </button>
-        </div>
+        {currentChat && (
+          <span className="text-sm text-neutral-700">/ {currentChat.title}</span>
+        )}
       </header>
-
       <div className="flex-1 flex overflow-hidden">
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <nav className="flex gap-1 border-b border-neutral-200 bg-neutral-50 px-2">
-            {(
-              [
-                ['maps', '置换表'],
-                ['outlines', '大纲'],
-                ['drafts', '正文'],
-              ] as [Tab, string][]
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={clsx(
-                  'px-4 py-2 text-sm border-b-2 -mb-px',
-                  tab === key
-                    ? 'border-amber-500 text-amber-700'
-                    : 'border-transparent text-neutral-500',
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
-          <div className="flex-1 overflow-hidden">
-            {tab === 'maps' && <MapsPanel novelId={id} />}
-            {tab === 'outlines' && <OutlinePanel novelId={id} />}
-            {tab === 'drafts' && <DraftsPanel novelId={id} />}
-          </div>
-        </main>
-
-        <aside className="w-[400px] border-l border-neutral-200 flex flex-col">
-          <div className="border-b border-neutral-200">
-            <StatePanel novelId={id} />
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <AgentChat sessionId={sessionId} onClosed={() => setSessionId(null)} />
-          </div>
-        </aside>
+        <div className="w-[240px] shrink-0">
+          <ChatSidebar
+            novelId={id}
+            selectedChatId={chatId}
+            onSelect={(cid) => setChatId(cid || null)}
+          />
+        </div>
+        <div className="min-w-[500px] flex-1 border-r border-neutral-200">
+          <ChatPanel
+            novelId={id}
+            chatId={chatId}
+            onChatCreated={(newId) => {
+              setChatId(newId)
+              qc.invalidateQueries({ queryKey: ['chats', id] })
+            }}
+          />
+        </div>
+        <div className="min-w-[600px] flex-1">
+          <ArtifactTabs novelId={id} />
+        </div>
       </div>
     </div>
   )
