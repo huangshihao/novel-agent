@@ -11,7 +11,10 @@ import type {
   StateRecord,
 } from '@novel-agent/shared'
 
-export type ChapterListItem = Pick<Chapter, 'id' | 'novel_id' | 'number' | 'title' | 'summary'>
+export type ChapterListItem = Pick<
+  Chapter,
+  'id' | 'novel_id' | 'number' | 'title' | 'summary' | 'plot_functions' | 'originality_risks'
+>
 
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) {

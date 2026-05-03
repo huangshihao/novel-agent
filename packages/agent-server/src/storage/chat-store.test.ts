@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createChat, listChats, deleteChat, getChat, updateChatTitle, touchChatLastMsg } from './chat-store.js'
+import { db } from './db.js'
 
 const NOVEL_ID = 'nv-test-1'
 
@@ -10,10 +11,17 @@ let tmp: string
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'chat-store-'))
   process.env['NOVEL_AGENT_DATA_DIR'] = tmp
+  try {
+    db().exec(`DELETE FROM chat_part; DELETE FROM chat_message; DELETE FROM chat_session;`)
+  } catch { /* tables may not exist on first run */ }
 })
 
-describe('chat-store', () => {
-  it('createChat appends to index and returns metadata with id starting with cht-', async () => {
+afterEach(() => {
+  rmSync(tmp, { recursive: true, force: true })
+})
+
+describe('chat-store (sqlite)', () => {
+  it('createChat returns metadata with id starting with cht-', async () => {
     const chat = await createChat(NOVEL_ID, '前 10 章大纲')
     expect(chat.id).toMatch(/^cht-/)
     expect(chat.title).toBe('前 10 章大纲')
@@ -28,7 +36,7 @@ describe('chat-store', () => {
     expect(chat.title).toBe('新对话')
   })
 
-  it('listChats returns empty array when index missing', async () => {
+  it('listChats returns empty array when no chats', async () => {
     const list = await listChats(NOVEL_ID)
     expect(list).toEqual([])
   })
@@ -55,11 +63,11 @@ describe('chat-store', () => {
     expect(updated!.last_msg_at).not.toBe(before)
   })
 
-  it('deleteChat removes from index and removes jsonl file if exists', async () => {
+  it('deleteChat removes from db and removes jsonl file if exists', async () => {
     const chat = await createChat(NOVEL_ID, 't')
-    // simulate jsonl creation
-    const { writeFileSync } = await import('node:fs')
+    const { writeFileSync, mkdirSync } = await import('node:fs')
     const { paths } = await import('./paths.js')
+    mkdirSync(paths.chatsDir(NOVEL_ID), { recursive: true })
     writeFileSync(paths.chatSession(NOVEL_ID, chat.id), '')
     expect(existsSync(paths.chatSession(NOVEL_ID, chat.id))).toBe(true)
     await deleteChat(NOVEL_ID, chat.id)
@@ -74,7 +82,7 @@ describe('chat-store', () => {
     await new Promise((r) => setTimeout(r, 10))
     await touchChatLastMsg(NOVEL_ID, a.id, 'newer touch on a')
     const list = await listChats(NOVEL_ID)
-    expect(list[0]!.id).toBe(a.id) // a now has newer last_msg_at
+    expect(list[0]!.id).toBe(a.id)
     expect(list[1]!.id).toBe(b.id)
   })
 })

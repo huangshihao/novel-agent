@@ -1,23 +1,25 @@
 import { writeMd } from './markdown.js'
 import { paths } from './paths.js'
+import { writeChapterInternal } from './chapter-internal-store.js'
+import type {
+  CharacterRole,
+  CharacterStoryFunction,
+  KeyEventEntry,
+  Replaceability,
+  SubplotFunction,
+  WritingRhythm,
+} from '@novel-agent/shared'
+
+export type {
+  CharacterRole,
+  CharacterStoryFunction,
+  KeyEventEntry,
+  Replaceability,
+  SubplotFunction,
+  WritingRhythm,
+} from '@novel-agent/shared'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
-
-export type CharacterRole =
-  | 'protagonist'
-  | 'female-lead'
-  | 'antagonist'
-  | 'mentor'
-  | 'family'
-  | 'side'
-  | 'tool'
-
-export type SubplotFunction =
-  | 'create-crisis'
-  | 'deliver-payoff'
-  | 'establish-setting'
-  | 'romance'
-  | 'growth'
 
 export type HookCategory =
   | 'suspense'
@@ -38,7 +40,10 @@ export interface SourceChapterRecord {
   hooks_paid: string[]
   hooks_planted_candidates: { desc: string; category: string | null }[]
   summary: string
-  key_events: string[]
+  key_events: KeyEventEntry[]
+  plot_functions: string[]
+  originality_risks: string[]
+  writing_rhythm: WritingRhythm | null
 }
 
 export interface SourceCharacterRecord {
@@ -46,6 +51,8 @@ export interface SourceCharacterRecord {
   aliases: string[]
   role: CharacterRole | null
   function_tags: string[]
+  story_function: CharacterStoryFunction | null
+  replaceability: Replaceability | null
   first_chapter: number
   last_chapter: number
   death_chapter: number | null
@@ -56,6 +63,9 @@ export interface SourceSubplotRecord {
   id: string
   name: string
   function: SubplotFunction | null
+  delivers: string
+  depends_on: string[]
+  reorderable: boolean
   chapters: number[]
   description: string
 }
@@ -89,6 +99,14 @@ export async function writeSourceChapter(
   novelId: string,
   rec: SourceChapterRecord,
 ): Promise<void> {
+  // 双写：MD 只存功能层（agent 可见），SQLite 存 desc/summary（仅 UI 可见）
+  // 防止 LLM 抄原书具体载体（如"低血糖晕倒"），prompt 级隐藏失败后转为存储级隔离
+  const keyEventsForMd = rec.key_events.map((e) => ({
+    function: e.function,
+    can_replace: e.can_replace,
+    can_reorder: e.can_reorder,
+    depends_on: e.depends_on,
+  }))
   const fm = {
     number: rec.number,
     title: rec.title,
@@ -96,11 +114,13 @@ export async function writeSourceChapter(
     hooks_planted: rec.hooks_planted,
     hooks_paid: rec.hooks_paid,
     _hooks_planted_candidates: rec.hooks_planted_candidates,
+    plot_functions: rec.plot_functions,
+    key_events: keyEventsForMd,
+    originality_risks: rec.originality_risks,
+    writing_rhythm: rec.writing_rhythm,
   }
-  const body =
-    `## 摘要\n${rec.summary.trim()}\n\n` +
-    `## 关键事件\n${rec.key_events.map((e) => `- ${e}`).join('\n')}\n`
-  await writeMd(paths.sourceChapter(novelId, rec.number), fm, body)
+  await writeMd(paths.sourceChapter(novelId, rec.number), fm, '')
+  writeChapterInternal(novelId, rec.number, rec.summary, rec.key_events)
 }
 
 export async function writeSourceCharacter(
@@ -112,6 +132,8 @@ export async function writeSourceCharacter(
     aliases: rec.aliases,
     role: rec.role,
     function_tags: rec.function_tags,
+    story_function: rec.story_function,
+    replaceability: rec.replaceability,
     first_chapter: rec.first_chapter,
     last_chapter: rec.last_chapter,
     death_chapter: rec.death_chapter,

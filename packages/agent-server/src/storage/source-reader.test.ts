@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import { writeSourceChapter, writeSourceCharacter, writeSourceHooks, writeSourceSubplots, writeSourceMeta } from './source-writer.js'
 import {
   listSourceChapters,
+  listSourceChaptersFull,
   readSourceChapter,
+  readSourceChapterFull,
   listSourceCharacters,
   readSourceSubplots,
   readSourceHooks,
@@ -21,21 +23,81 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(tmp, { recursive: true, force: true }))
 
+const blankChapter = {
+  characters_present: [] as string[],
+  hooks_planted: [] as string[],
+  hooks_paid: [] as string[],
+  hooks_planted_candidates: [] as { desc: string; category: string | null }[],
+  summary: '',
+  key_events: [] as never[],
+  plot_functions: [] as string[],
+  originality_risks: [] as string[],
+  writing_rhythm: null,
+}
+
+const blankCharacter = {
+  aliases: [] as string[],
+  function_tags: [] as string[],
+  story_function: null,
+  replaceability: null,
+  first_chapter: 1,
+  last_chapter: 1,
+  death_chapter: null,
+  description: '',
+}
+
 describe('source-reader', () => {
   it('lists chapters by number ascending', async () => {
-    await writeSourceChapter('nv-1', { number: 2, title: 'B', characters_present: [], hooks_planted: [], hooks_paid: [], hooks_planted_candidates: [], summary: 's2', key_events: [] })
-    await writeSourceChapter('nv-1', { number: 1, title: 'A', characters_present: [], hooks_planted: [], hooks_paid: [], hooks_planted_candidates: [], summary: 's1', key_events: [] })
+    await writeSourceChapter('nv-1', { ...blankChapter, number: 2, title: 'B', summary: 's2' })
+    await writeSourceChapter('nv-1', { ...blankChapter, number: 1, title: 'A', summary: 's1' })
     const list = await listSourceChapters('nv-1')
     expect(list.map((c) => c.number)).toEqual([1, 2])
   })
 
-  it('readSourceChapter returns body sections parsed', async () => {
-    await writeSourceChapter('nv-1', { number: 3, title: 'X', characters_present: ['张三'], hooks_planted: [], hooks_paid: [], hooks_planted_candidates: [{ desc: 'cand', category: 'secret' }], summary: '摘要内容', key_events: ['e1', 'e2'] })
+  it('readSourceChapter returns md-only fields with blank summary/desc', async () => {
+    await writeSourceChapter('nv-1', {
+      ...blankChapter,
+      number: 3,
+      title: 'X',
+      characters_present: ['张三'],
+      hooks_planted_candidates: [{ desc: 'cand', category: 'secret' }],
+      summary: '摘要内容',
+      key_events: [
+        { desc: 'e1', function: 'f1', can_replace: true, can_reorder: false, depends_on: [] },
+        { desc: 'e2', function: 'f2', can_replace: true, can_reorder: false, depends_on: [] },
+      ],
+    })
     const ch = await readSourceChapter('nv-1', 3)
-    expect(ch?.summary).toBe('摘要内容')
-    expect(ch?.key_events).toEqual(['e1', 'e2'])
+    expect(ch?.summary).toBe('')
+    expect(ch?.key_events.map((e) => e.desc)).toEqual(['', ''])
+    expect(ch?.key_events.map((e) => e.function)).toEqual(['f1', 'f2'])
     expect(ch?.characters_present).toEqual(['张三'])
     expect(ch?.hooks_planted_candidates).toEqual([{ desc: 'cand', category: 'secret' }])
+  })
+
+  it('readSourceChapterFull merges md + sqlite summary/desc', async () => {
+    await writeSourceChapter('nv-1', {
+      ...blankChapter,
+      number: 4,
+      title: 'Y',
+      summary: '完整摘要',
+      key_events: [
+        { desc: 'e1', function: 'f1', can_replace: true, can_reorder: false, depends_on: [] },
+        { desc: 'e2', function: 'f2', can_replace: true, can_reorder: false, depends_on: [] },
+      ],
+    })
+    const ch = await readSourceChapterFull('nv-1', 4)
+    expect(ch?.summary).toBe('完整摘要')
+    expect(ch?.key_events.map((e) => e.desc)).toEqual(['e1', 'e2'])
+    expect(ch?.key_events.map((e) => e.function)).toEqual(['f1', 'f2'])
+  })
+
+  it('listSourceChaptersFull returns merged data sorted', async () => {
+    await writeSourceChapter('nv-1', { ...blankChapter, number: 2, title: 'B', summary: 's2' })
+    await writeSourceChapter('nv-1', { ...blankChapter, number: 1, title: 'A', summary: 's1' })
+    const list = await listSourceChaptersFull('nv-1')
+    expect(list.map((c) => c.number)).toEqual([1, 2])
+    expect(list.map((c) => c.summary)).toEqual(['s1', 's2'])
   })
 
   it('readSourceChapter returns null when missing', async () => {
@@ -43,7 +105,12 @@ describe('source-reader', () => {
   })
 
   it('listSourceCharacters parses description from body', async () => {
-    await writeSourceCharacter('nv-1', { canonical_name: '张三', aliases: [], role: 'protagonist', function_tags: [], first_chapter: 1, last_chapter: 1, death_chapter: null, description: '一个主角' })
+    await writeSourceCharacter('nv-1', {
+      ...blankCharacter,
+      canonical_name: '张三',
+      role: 'protagonist',
+      description: '一个主角',
+    })
     const chars = await listSourceCharacters('nv-1')
     expect(chars).toHaveLength(1)
     expect(chars[0]!.role).toBe('protagonist')
@@ -79,8 +146,8 @@ describe('source-reader', () => {
   })
 
   it('wipeSourceAggregates removes characters/subplots/hooks/meta but keeps chapters', async () => {
-    await writeSourceChapter('nv-1', { number: 1, title: 'A', characters_present: [], hooks_planted: [], hooks_paid: [], hooks_planted_candidates: [], summary: 's', key_events: [] })
-    await writeSourceCharacter('nv-1', { canonical_name: 'X', aliases: [], role: null, function_tags: [], first_chapter: 1, last_chapter: 1, death_chapter: null, description: '' })
+    await writeSourceChapter('nv-1', { ...blankChapter, number: 1, title: 'A', summary: 's' })
+    await writeSourceCharacter('nv-1', { ...blankCharacter, canonical_name: 'X', role: null })
     await writeSourceSubplots('nv-1', [])
     await writeSourceHooks('nv-1', [])
     await writeSourceMeta('nv-1', { title: 't', chapter_count: 1, genre_tags: [], industry: '', era: '', world_rules: [], key_terms: [], style_tags: [], style_samples: [], summary: '' })

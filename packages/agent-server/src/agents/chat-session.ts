@@ -32,7 +32,11 @@ export async function createChatAgent(init: ChatAgentInit): Promise<AgentSession
 
   const sessionFile = paths.chatSession(init.novelId, init.chatId)
   const sessionDir = dirname(sessionFile)
-  await mkdir(sessionDir, { recursive: true })
+  await Promise.all([
+    mkdir(sessionDir, { recursive: true }),
+    mkdir(paths.targetOutlinesDir(init.novelId), { recursive: true }),
+    mkdir(paths.targetChaptersDir(init.novelId), { recursive: true }),
+  ])
 
   const sessionManager = existsSync(sessionFile)
     ? SessionManager.open(sessionFile, sessionDir)

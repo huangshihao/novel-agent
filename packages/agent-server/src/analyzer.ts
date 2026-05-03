@@ -10,7 +10,7 @@ import { buildAnalyzerLlmClient } from './lib/llm-client.js'
 import { emitAnalysisEvent } from './event-bus.js'
 import { paths } from './storage/paths.js'
 import { writeSourceChapter } from './storage/source-writer.js'
-import { listSourceChapters, wipeSourceAggregates } from './storage/source-reader.js'
+import { listSourceChapters, listSourceChaptersFull, wipeSourceAggregates } from './storage/source-reader.js'
 import {
   writeSourceCharacter,
   writeSourceHooks,
@@ -18,10 +18,31 @@ import {
   writeSourceSubplots,
 } from './storage/source-writer.js'
 import { readNovelIndex, updateNovelIndex } from './storage/novel-index.js'
+import type {
+  CharacterStoryFunction,
+  KeyEventEntry,
+  Replaceability,
+  WritingRhythm,
+} from '@novel-agent/shared'
 
 const BATCH_SIZE = 5
+const RHYTHM_BATCH_SIZE = 3
 const MAX_CHAPTER_CHARS = 1500
 const DEFAULT_CONCURRENCY = 3
+
+const STORY_FUNCTIONS: CharacterStoryFunction[] = [
+  'pressure-source',
+  'benefactor',
+  'rival',
+  'witness',
+  'resource-gateway',
+  'emotional-anchor',
+  'antagonist-proxy',
+  'foil',
+  'information-source',
+  'gatekeeper',
+]
+const REPLACEABILITY: Replaceability[] = ['high', 'medium', 'low']
 
 // ─── 类型 ─────────────────────────────────────────────────────────────────
 
@@ -52,7 +73,9 @@ interface ChapterExtract {
   chapter_id: number // 章节 number（1-based，对 DeepSeek 而言）
   summary: string
   characters_present: string[]
-  key_events: string[]
+  plot_functions: string[]
+  key_events: KeyEventEntry[]
+  originality_risks: string[]
   hooks_planted: { desc: string; category: HookCategoryCode | null }[]
   hooks_paid: { ref_desc: string }[]
 }
@@ -71,6 +94,8 @@ interface DedupedCharacter {
   aliases: string[]
   role: 'protagonist' | 'female-lead' | 'antagonist' | 'mentor' | 'family' | 'side' | 'tool' | null
   function_tags: string[]
+  story_function: CharacterStoryFunction | null
+  replaceability: Replaceability | null
   death_chapter: number | null
   description: string
 }
@@ -79,6 +104,9 @@ interface IdentifiedSubplot {
   id?: string
   name: string
   function: 'create-crisis' | 'deliver-payoff' | 'establish-setting' | 'romance' | 'growth' | null
+  delivers: string
+  depends_on: string[]
+  reorderable: boolean
   description: string
   chapters: number[]
 }
@@ -92,7 +120,11 @@ function extractPrompt(
     .map((c) => `【第${c.number}章】标题：${c.title}\n${clip(c.content, MAX_CHAPTER_CHARS)}`)
     .join('\n\n---\n\n')
 
-  return `你是中文网络小说分析师。下面是若干章原文，请为每一章输出结构化分析。
+  return `你是中文网络小说**功能分析师**。下面是若干章原文。
+
+我们在做一件事：把这本网文"洗稿"成一本同类型新书。**洗稿的逻辑是抽掉具体载体、保留剧情功能** —— 改写时要在同一个功能槽里塞新事件，所以你这一步的核心是把每章每个事件**功能化标注**，方便下游改写器换载体。
+
+请为每一章输出结构化分析。
 
 ─── 钩子（hooks_planted）的严格定义 ───
 
@@ -159,16 +191,37 @@ function extractPrompt(
 ✗ 「主角计划打听陈婉家情况」—— 立即兑现计划
 ✗ 「人参卖了 5000 元将改变家庭」—— 已完成事件
 
-─── 输出要求 ───
+─── 功能化字段说明（核心） ───
 
-1. summary: 100-200 字详细摘要，含主要事件与关键人物的具体行动
-2. characters_present: 本章有名有姓、有台词或行动的角色（路人不算）
-3. key_events: 本章关键事件列表，每条 15-30 字，必须是具体动作
-4. hooks_planted: **符合上述长线定义**、**本章首次或有增量**的钩子。每条 {desc, category}。
-   - **只抽长线**：本章 10-20 章内会回收的小悬念**不要**抽
-   - category = 上述 9 种之一的英文 code
-   - **宁可少不要多**；本章若无真正的新长线钩子，就输出空数组 []
-5. hooks_paid: 本章明显回收了前文某钩子，每条 {ref_desc}（被回收钩子的简要描述）
+**plot_functions**：本章在故事机器里干了什么 —— 1-3 个高度抽象的功能标签。**任何题材都通用**（都市/玄幻/重生/末世/系统/年代/科幻/言情）。改写时按这个找替代场景。
+- 抽象层级要够高，**不要写成具体事件**，要让换题材也能复用。
+- 通用示例（全题材适用）：
+  「建立主角低谷状态」「施加外部压力」「展示主角优势机制」「制造短期目标」「兑现资源回报」「埋长线钩子」「兑现先前钩子」「打脸/反击释放爽感」「关系建立/破裂/转折」「升级/跨阶铺垫」「环境/规则交代」「群体反应放大」「过渡承接」
+- 错（题材绑死或事件复述）：「在饭店和叔叔吵架」「砍了野猪」「突破练气期」「拿了 5000 块」
+
+**key_events**：本章关键事件列表（3-7 条），每条是结构化对象 {desc, function, can_replace, can_reorder, depends_on}。
+- desc：事件本身一句话（15-30 字，给人读理解用，可以含具体载体）
+- function：**这件事的剧情功能**（给改写器用），**抽象到任何题材都能复用**。不要复读 desc，不要带题材专有名词。
+  - 通用功能标签：「压迫源出场」「主角优势暴露」「关系破裂触发」「信息差兑现」「外部资源到手」「短期目标设立」「长线伏笔埋设」「群体反应放大爽感」「环境/规则交代」「主角主动选择」「内心动摇/坚定」「身份/秘密暴露」「决策代价显现」
+  - 反面：「打野猪赚钱」「突破金丹期」「招标会反杀」 —— 题材绑死
+- can_replace：改写时这件事的**具体载体能否换**（绝大多数 = true；只有锚定主线节奏的关键节点 = false）
+- can_reorder：和**本章其他事件**之间能否调换顺序（无前后因果就 true）
+- depends_on：依赖前文哪些事件功能（用 function 字符串引用，不是 desc）。无依赖填 []
+
+**originality_risks**：改写时**绝对要避开**的标志性桥段 —— 0-3 条。这些是"一眼看出抄袭"的元凶。
+- 抽象形态描述（**不要绑死人名/具名物名**），载体级即可：
+  - 「<主角>在<某类场地>捡到<某类高阶物品>」
+  - 「<某类聚会场合>被反派<某种当众羞辱方式>」
+  - 「<指引者角色>留下<某类未完信息>后离场」
+  - 「<规则系统>在主角危急时第一次显化奖励」
+- 抽象层级：能识别"这是原作的标志性桥段"，但用占位符指代具体身份/物品
+- 大多数章不需要填；本章无明显标志性桥段就输出 []
+
+**characters_present**：本章有名有姓、有台词或行动的角色（路人不算）。
+
+**summary**：100-200 字详细摘要，含主要事件与关键人物的具体行动（人读用，不参与功能化）。
+
+─── 输出 JSON ───
 
 严格 JSON 输出，不要任何额外文字：
 
@@ -178,9 +231,66 @@ function extractPrompt(
       "chapter_id": <章号>,
       "summary": "...",
       "characters_present": ["..."],
-      "key_events": ["..."],
+      "plot_functions": ["...", "..."],
+      "key_events": [
+        {
+          "desc": "<本章具体事件一句话>",
+          "function": "<通用功能标签>",
+          "can_replace": true,
+          "can_reorder": false,
+          "depends_on": []
+        }
+      ],
+      "originality_risks": [],
       "hooks_planted": [{"desc": "...", "category": "suspense"}],
       "hooks_paid": [{"ref_desc": "..."}]
+    }
+  ]
+}
+
+章节原文：
+
+${block}
+`
+}
+
+function writingRhythmPrompt(chapters: { number: number; title: string; content: string }[]): string {
+  const block = chapters
+    .map((c) => `【第${c.number}章】标题：${c.title}\n${clip(c.content, MAX_CHAPTER_CHARS)}`)
+    .join('\n\n---\n\n')
+
+  return `你是中文网络小说**文本结构分析师**。
+
+下面是若干章原文。请**为每一章**只分析它在"写作节奏、叙事组织、信息释放、情绪推进、读者注意力控制"上的结构 —— **不分析剧情功能、不复述事件**。
+
+输出会被改写器用来匹配新章正文的节奏（同样的开头快慢、同样的对话/心理/解释配比、同样的情绪曲线、同样的钩子密度）。所以你的描述要**可执行**：改写器看了能照着写。
+
+─── 维度说明（精简版，只抽对正文生成最关键的 5 个） ───
+
+1. **text_composition**：估算各类文本占比（百分比字符串，例如 "30%"）。conflict_ratio 与其他重叠不强求和 100。
+2. **pacing_profile**：opening_speed/middle_speed/ending_speed（"快"/"中"/"慢"）；overall_rhythm 一句话描述整体节奏（"先慢后快"/"中段爆发"/"持续推进"等）。
+3. **emotional_curve**：opening/middle/climax/ending_emotion 四个情绪标签（如"压抑"/"紧张"/"愤怒"/"爽感"/"期待"/"不安"）；emotion_shift_points 数组，每个 {position（"约30%"），from，to，trigger}。0-2 个转折点足够。
+4. **reader_attention_design**：opening_hook（开头如何抓人，一句话）；micro_hooks（章内 2-4 条小悬念/反常）；chapter_end_hook（章末钩子内容，一句话）。
+5. **chapter_writing_pattern**（最重要，正文生成直接照这个走）：
+   - structure_type（"冲突开场型"/"任务推进型"/"爽点兑现型"/"信息铺垫型"/"关系变化型"/"过渡承接型"/"高潮爆发型"）
+   - beat_sequence：4-7 个节拍，按章内推进顺序，每条一句话
+   - core_rhythm：一句话总结（如"压迫蓄力 → 信息延迟 → 反击释放 → 新钩子"）
+
+─── 输出 ───
+
+严格 JSON，rhythms 数组按章节顺序：
+
+{
+  "rhythms": [
+    {
+      "chapter_id": <章号>,
+      "writing_rhythm": {
+        "text_composition": { "action_narration_ratio": "", "dialogue_ratio": "", "inner_monologue_ratio": "", "exposition_ratio": "", "description_ratio": "", "conflict_ratio": "", "summary_transition_ratio": "" },
+        "pacing_profile": { "opening_speed": "", "middle_speed": "", "ending_speed": "", "overall_rhythm": "" },
+        "emotional_curve": { "opening_emotion": "", "middle_emotion": "", "climax_emotion": "", "ending_emotion": "", "emotion_shift_points": [] },
+        "reader_attention_design": { "opening_hook": "", "micro_hooks": [], "chapter_end_hook": "" },
+        "chapter_writing_pattern": { "structure_type": "", "beat_sequence": [], "core_rhythm": "" }
+      }
     }
   ]
 }
@@ -369,7 +479,7 @@ ${JSON.stringify(input.paid, null, 2)}
 function charactersPrompt(input: {
   characters: { name: string; chapters: number[]; summaries: { chapter: number; summary: string }[] }[]
 }): string {
-  return `下面是一部中文网文的候选人物名字，以及他们出现的章节摘要。请你做四件事：**合并别名** + **筛掉工具人** + **判定 role + function_tags + death_chapter** + **写描述**。
+  return `下面是一部中文网文的候选人物名字，以及他们出现的章节摘要。请你做五件事：**合并别名** + **筛掉工具人** + **判定 role + function_tags + death_chapter** + **判定 story_function + replaceability**（改写器用）+ **写描述**。
 
 ─── 规则 ───
 
@@ -401,7 +511,25 @@ function charactersPrompt(input: {
    - 无证据就**只描述他们做了什么**，不要写关系
    - 例：摘要写"小孩们喊陈婉'姑姑'"→ 可以写"陈婉的侄辈"；若只写"小孩们围着陈婉"→ 只能写"和陈婉同家的小孩"
 
-7. **description** 不超过 80 字，以"他在书中做了什么 + 性格"为主，关系只在有证据时点到为止。
+7. **判定 story_function**（改写器用，从下面 10 选 1 或 null）：这个角色在故事机器里**给主角施加的作用**是什么？**任何题材都适用**：
+   - pressure-source：压迫主角的来源（反派/有敌意的亲属/规则执行者/上位者）
+   - benefactor：贵人（无偿提供资源/机会/信息/保护的人）
+   - rival：竞争者（同一资源池里和主角抢的人，但不是反派）
+   - witness：见证者（围观/震惊/改观的旁人，放大爽点）
+   - resource-gateway：资源入口（持有主角需要的渠道/物资/职位/秘籍/系统的人）
+   - emotional-anchor：情绪锚（家人/恋人/挚友，感情牵引）
+   - antagonist-proxy：反派代理人（为反派办事的中层）
+   - foil：反衬（轨迹与主角对比，照见主角变化）
+   - information-source：信息源（提供关键情报/线索）
+   - gatekeeper：守门人（决定主角能否进入下一阶段的关键人物）
+   主角自己填 null（主角不是别人的功能）。
+
+8. **判定 replaceability**（改写器用，"high"/"medium"/"low"）：改写时这个角色能不能换身份/背景？
+   - high：纯功能角色，换完全不同的身份做同样事（题材内可任意调换载体）
+   - medium：有特定关系/位置约束，身份可调但关系类型要保留
+   - low：身份本身就是剧情核心（血亲、命定关系、不可替换的位面身份等），只能换名字不能换身份
+
+9. **description** 不超过 80 字，以"他在书中做了什么 + 性格"为主，关系只在有证据时点到为止。
 
 ─── 反面示例 ───
 
@@ -422,6 +550,8 @@ function charactersPrompt(input: {
       "aliases": ["..."],
       "role": "protagonist|female-lead|antagonist|mentor|family|side|tool",
       "function_tags": ["...", "..."],
+      "story_function": "pressure-source|benefactor|rival|witness|resource-gateway|emotional-anchor|antagonist-proxy|foil|information-source|gatekeeper|null",
+      "replaceability": "high|medium|low",
       "death_chapter": <章号或 null>,
       "description": "..."
     }
@@ -436,6 +566,8 @@ ${JSON.stringify(input, null, 2)}
 function subplotsPrompt(chapters: { number: number; summary: string; events: string[] }[]): string {
   return `下面是一部中文网文的每章摘要和关键事件。请识别出 3-10 条主要支线/剧情线。一条支线是跨多章、围绕同一主题/冲突的一组相关事件。
 
+我们在做洗稿改写。**关键在于把每条支线的"功能"和"依赖关系"标注清楚，下游改写器能在保留功能的前提下换具体载体、调发生顺序。**
+
 要求：
 1. 必须包含主线（最核心的冲突/追求）和若干条清晰的支线
 2. 每条支线列出它明显推进的章节号
@@ -445,14 +577,30 @@ function subplotsPrompt(chapters: { number: number; summary: string; events: str
    - establish-setting：铺设定 / 建立世界观或主角的资源池
    - romance：感情线
    - growth：主角成长 / 升级线
-4. description 不超过 100 字
-5. id 必须是 'sp-NNN' 形式（sp-001, sp-002, ...）
+4. **delivers**（一句话，**任何题材都通用**）：这条支线**给主线送了什么** —— 改写时必须保留的核心交付物。
+   - 通用形态：「给主角带来第一份外部资源」「让主角和某个核心配角首次产生交集」「让主角理解世界/规则/系统的某条规律」「带出第一个直接对抗的压迫源」「为主角解锁下一阶段身份/位置」「制造第一次重大失败/受挫」
+   - 反面：「给主角带来 5000 块」（题材绑死）/「让主角突破金丹」（题材绑死）
+5. **depends_on**（数组）：这条支线**必须**在哪些其他支线推进到一定程度后才能发生（用支线 id 引用，例 ["sp-002"]）。无依赖填 []。
+6. **reorderable**（布尔）：这条支线在改写大纲里**和其他无依赖支线的相对发生顺序能否调换**。
+   - 大多数支线 = true（独立的资源获取、人脉积累、阶段性对抗都可以调换前后）
+   - 关键节点支线 = false（开场介绍、最终对决、必须卡在某节奏点的支线）
+7. description 不超过 100 字
+8. id 必须是 'sp-NNN' 形式（sp-001, sp-002, ...）
 
 严格 JSON 输出：
 
 {
   "subplots": [
-    { "id": "sp-001", "name": "...", "function": "establish-setting", "description": "...", "chapters": [1, 3, 5] }
+    {
+      "id": "sp-001",
+      "name": "...",
+      "function": "establish-setting",
+      "delivers": "给主角带来第一份外部资源",
+      "depends_on": [],
+      "reorderable": true,
+      "description": "...",
+      "chapters": [1, 3, 5]
+    }
   ]
 }
 
@@ -570,7 +718,21 @@ async function incAnalyzed(novelId: string, inc: number, total: number): Promise
   emitAnalysisEvent(novelId, { type: 'analyze.progress', analyzed: next, total })
 }
 
-// ─── Pass 1: per-chapter batch extraction ─────────────────────────────────
+// ─── Pass 1: per-chapter batch extraction + batched writing rhythm ────────
+// extract 和 rhythm 都按 batch 跑（受 concurrency 限制）。
+// 章级任务等自己 batch 的 extract 和 rhythm 都到齐后立即写盘 + 增进度。
+// 这样 UI 进度条在分析过程中均匀走动，而不是憋到最后一次跳到 100%。
+
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (v: T) => void
+} {
+  let resolve!: (v: T) => void
+  const promise = new Promise<T>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
 
 async function runPass1(
   client: DeepSeekClient,
@@ -588,9 +750,18 @@ async function runPass1(
     })),
   )
 
-  const batches = chunk(withContent, BATCH_SIZE)
+  // 给每章一对 deferred：extract / rhythm。各自的 batch 完成后 resolve。
+  const extractDef = new Map<number, ReturnType<typeof deferred<ChapterExtract | null>>>()
+  const rhythmDef = new Map<number, ReturnType<typeof deferred<WritingRhythm>>>()
+  for (const c of withContent) {
+    extractDef.set(c.number, deferred<ChapterExtract | null>())
+    rhythmDef.set(c.number, deferred<WritingRhythm>())
+  }
 
-  await pMap(batches, concurrency, async (batch) => {
+  const extractBatches = chunk(withContent, BATCH_SIZE)
+  const rhythmBatches = chunk(withContent, RHYTHM_BATCH_SIZE)
+
+  const extractsDone = pMap(extractBatches, concurrency, async (batch) => {
     let extracts: ChapterExtract[] = []
     try {
       const parsed = await client.chatJson<{ chapters: ChapterExtract[] }>(
@@ -601,41 +772,94 @@ async function runPass1(
     } catch (err) {
       console.warn(`[analyzer] extract batch failed:`, (err as Error).message)
     }
-
     const byNum = new Map<number, ChapterExtract>()
     for (const e of extracts) {
       const cid = Number(e.chapter_id)
       if (cid) byNum.set(cid, normalizeExtract(e))
     }
-
     for (const c of batch) {
-      const e = byNum.get(c.number)
-      if (!e) continue
-      await writeSourceChapter(novelId, {
-        number: c.number,
-        title: c.title,
-        characters_present: e.characters_present,
-        hooks_planted: [],
-        hooks_paid: e.hooks_paid.map((p) => p.ref_desc),
-        hooks_planted_candidates: e.hooks_planted.map((h) => ({
-          desc: h.desc,
-          category: h.category,
-        })),
-        summary: e.summary,
-        key_events: e.key_events,
-      })
-      results.set(c.number, e)
-      emitAnalysisEvent(novelId, {
-        type: 'analyze.chapter',
-        number: c.number,
-        title: c.title,
-      })
+      extractDef.get(c.number)!.resolve(byNum.get(c.number) ?? null)
     }
-
-    await incAnalyzed(novelId, batch.length, total)
   })
 
+  const rhythmsDone = pMap(rhythmBatches, concurrency, async (batch) => {
+    let parsed: { rhythms?: { chapter_id?: unknown; writing_rhythm?: unknown }[] } | null = null
+    try {
+      parsed = await client.chatJson<{ rhythms?: { chapter_id?: unknown; writing_rhythm?: unknown }[] }>(
+        writingRhythmPrompt(batch),
+        { temperature: 0.3 },
+      )
+    } catch (err) {
+      console.warn(`[analyzer] rhythm batch failed:`, (err as Error).message)
+    }
+    const byNum = new Map<number, WritingRhythm>()
+    if (parsed && Array.isArray(parsed.rhythms)) {
+      for (const r of parsed.rhythms) {
+        const cid = Number(r.chapter_id)
+        if (cid) byNum.set(cid, normalizeWritingRhythm(r.writing_rhythm))
+      }
+    }
+    for (const c of batch) {
+      rhythmDef.get(c.number)!.resolve(byNum.get(c.number) ?? emptyWritingRhythm())
+    }
+  })
+
+  // 章级任务：等自己的 extract + rhythm，就写盘 + 进度
+  await pMap(withContent, concurrency, async (c) => {
+    const [extract, rhythm] = await Promise.all([
+      extractDef.get(c.number)!.promise,
+      rhythmDef.get(c.number)!.promise,
+    ])
+    if (!extract) return
+    results.set(c.number, extract)
+    await writeSourceChapter(novelId, {
+      number: c.number,
+      title: c.title,
+      characters_present: extract.characters_present,
+      hooks_planted: [],
+      hooks_paid: extract.hooks_paid.map((p) => p.ref_desc),
+      hooks_planted_candidates: extract.hooks_planted.map((h) => ({
+        desc: h.desc,
+        category: h.category,
+      })),
+      summary: extract.summary,
+      key_events: extract.key_events,
+      plot_functions: extract.plot_functions,
+      originality_risks: extract.originality_risks,
+      writing_rhythm: rhythm,
+    })
+    emitAnalysisEvent(novelId, {
+      type: 'analyze.chapter',
+      number: c.number,
+      title: c.title,
+    })
+    await incAnalyzed(novelId, 1, total)
+  })
+
+  await Promise.all([extractsDone, rhythmsDone])
   return results
+}
+
+function normalizeKeyEventEntry(raw: unknown): KeyEventEntry | null {
+  if (!raw) return null
+  if (typeof raw === 'string') {
+    const desc = raw.trim()
+    if (!desc) return null
+    return { desc, function: '', can_replace: true, can_reorder: false, depends_on: [] }
+  }
+  if (typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const desc = String(r['desc'] ?? '').trim()
+  if (!desc) return null
+  return {
+    desc,
+    function: String(r['function'] ?? '').trim(),
+    can_replace: r['can_replace'] === false ? false : true,
+    can_reorder: r['can_reorder'] === true,
+    depends_on: Array.isArray(r['depends_on'])
+      ? (r['depends_on'] as unknown[]).map((d) => String(d).trim()).filter(Boolean)
+      : [],
+  }
 }
 
 function normalizeExtract(raw: Partial<ChapterExtract> & { chapter_id?: unknown }): ChapterExtract {
@@ -645,8 +869,16 @@ function normalizeExtract(raw: Partial<ChapterExtract> & { chapter_id?: unknown 
     characters_present: Array.isArray(raw.characters_present)
       ? raw.characters_present.map((s) => String(s).trim()).filter(Boolean)
       : [],
+    plot_functions: Array.isArray(raw.plot_functions)
+      ? raw.plot_functions.map((s) => String(s).trim()).filter(Boolean)
+      : [],
     key_events: Array.isArray(raw.key_events)
-      ? raw.key_events.map((s) => String(s).trim()).filter(Boolean)
+      ? raw.key_events
+          .map((e) => normalizeKeyEventEntry(e))
+          .filter((e): e is KeyEventEntry => e !== null)
+      : [],
+    originality_risks: Array.isArray(raw.originality_risks)
+      ? raw.originality_risks.map((s) => String(s).trim()).filter(Boolean)
       : [],
     hooks_planted: Array.isArray(raw.hooks_planted)
       ? raw.hooks_planted
@@ -669,6 +901,99 @@ function normalizeExtract(raw: Partial<ChapterExtract> & { chapter_id?: unknown 
           }))
           .filter((h) => h.ref_desc)
       : [],
+  }
+}
+
+function emptyWritingRhythm(): WritingRhythm {
+  return {
+    text_composition: {
+      action_narration_ratio: '',
+      dialogue_ratio: '',
+      inner_monologue_ratio: '',
+      exposition_ratio: '',
+      description_ratio: '',
+      conflict_ratio: '',
+      summary_transition_ratio: '',
+    },
+    pacing_profile: {
+      opening_speed: '',
+      middle_speed: '',
+      ending_speed: '',
+      overall_rhythm: '',
+    },
+    emotional_curve: {
+      opening_emotion: '',
+      middle_emotion: '',
+      climax_emotion: '',
+      ending_emotion: '',
+      emotion_shift_points: [],
+    },
+    reader_attention_design: {
+      opening_hook: '',
+      micro_hooks: [],
+      chapter_end_hook: '',
+    },
+    chapter_writing_pattern: {
+      structure_type: '',
+      beat_sequence: [],
+      core_rhythm: '',
+    },
+  }
+}
+
+function normalizeWritingRhythm(raw: unknown): WritingRhythm {
+  if (!raw || typeof raw !== 'object') return emptyWritingRhythm()
+  const r = raw as Record<string, unknown>
+  const empty = emptyWritingRhythm()
+  const merge = <T extends object>(defaults: T, input: unknown): T => {
+    if (!input || typeof input !== 'object') return defaults
+    const out = { ...defaults } as Record<string, unknown>
+    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+      if (v !== undefined) out[k] = v
+    }
+    return out as T
+  }
+  return {
+    text_composition: merge(empty.text_composition, r['text_composition']),
+    pacing_profile: merge(empty.pacing_profile, r['pacing_profile']),
+    emotional_curve: {
+      ...merge(empty.emotional_curve, r['emotional_curve']),
+      emotion_shift_points: Array.isArray(
+        (r['emotional_curve'] as Record<string, unknown> | undefined)?.['emotion_shift_points'],
+      )
+        ? ((r['emotional_curve'] as Record<string, unknown>)['emotion_shift_points'] as unknown[]).map(
+            (p) => {
+              const o = (p ?? {}) as Record<string, unknown>
+              return {
+                position: String(o['position'] ?? ''),
+                from: String(o['from'] ?? ''),
+                to: String(o['to'] ?? ''),
+                trigger: String(o['trigger'] ?? ''),
+              }
+            },
+          )
+        : [],
+    },
+    reader_attention_design: {
+      ...merge(empty.reader_attention_design, r['reader_attention_design']),
+      micro_hooks: Array.isArray(
+        (r['reader_attention_design'] as Record<string, unknown> | undefined)?.['micro_hooks'],
+      )
+        ? ((r['reader_attention_design'] as Record<string, unknown>)['micro_hooks'] as unknown[]).map(
+            String,
+          )
+        : [],
+    },
+    chapter_writing_pattern: {
+      ...merge(empty.chapter_writing_pattern, r['chapter_writing_pattern']),
+      beat_sequence: Array.isArray(
+        (r['chapter_writing_pattern'] as Record<string, unknown> | undefined)?.['beat_sequence'],
+      )
+        ? (
+            (r['chapter_writing_pattern'] as Record<string, unknown>)['beat_sequence'] as unknown[]
+          ).map(String)
+        : [],
+    },
   }
 }
 
@@ -720,10 +1045,21 @@ async function runPass2(
         aliases: [],
         role: null,
         function_tags: [],
+        story_function: null,
+        replaceability: null,
         death_chapter: null,
         description: '',
       }))
     }
+    deduped = deduped.map((c) => ({
+      ...c,
+      story_function: STORY_FUNCTIONS.includes(c.story_function as CharacterStoryFunction)
+        ? (c.story_function as CharacterStoryFunction)
+        : null,
+      replaceability: REPLACEABILITY.includes(c.replaceability as Replaceability)
+        ? (c.replaceability as Replaceability)
+        : null,
+    }))
   }
 
   for (const c of deduped) {
@@ -740,6 +1076,8 @@ async function runPass2(
       aliases: c.aliases,
       role: c.role,
       function_tags: c.function_tags,
+      story_function: c.story_function,
+      replaceability: c.replaceability,
       first_chapter: sorted[0]!,
       last_chapter: sorted[sorted.length - 1]!,
       death_chapter: c.death_chapter,
@@ -750,7 +1088,11 @@ async function runPass2(
   // ── 2b. 支线识别 ─────────────────────────────────────────────────────
   const chapterInputs = [...extracts.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([num, ex]) => ({ number: num, summary: ex.summary, events: ex.key_events }))
+    .map(([num, ex]) => ({
+      number: num,
+      summary: ex.summary,
+      events: ex.key_events.map((e) => e.desc),
+    }))
 
   let subplots: IdentifiedSubplot[] = []
   if (chapterInputs.length > 0) {
@@ -773,6 +1115,11 @@ async function runPass2(
         id: sp.id ?? `sp-${String(i + 1).padStart(3, '0')}`,
         name: String(sp.name ?? '').trim() || '未命名支线',
         function: sp.function ?? null,
+        delivers: String(sp.delivers ?? '').trim(),
+        depends_on: Array.isArray(sp.depends_on)
+          ? sp.depends_on.map((d) => String(d).trim()).filter(Boolean)
+          : [],
+        reorderable: sp.reorderable === false ? false : true,
         description: String(sp.description ?? '').trim(),
         chapters: Array.isArray(sp.chapters)
           ? [...new Set(sp.chapters.map(Number).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b)
@@ -1034,14 +1381,16 @@ export function reaggregate(novelId: string): void {
 }
 
 async function loadAllExtracts(novelId: string): Promise<Map<number, ChapterExtract>> {
-  const list = await listSourceChapters(novelId)
+  const list = await listSourceChaptersFull(novelId)
   const out = new Map<number, ChapterExtract>()
   for (const ch of list) {
     out.set(ch.number, normalizeExtract({
       chapter_id: ch.number,
       summary: ch.summary,
       characters_present: ch.characters_present,
+      plot_functions: ch.plot_functions,
       key_events: ch.key_events,
+      originality_risks: ch.originality_risks,
       hooks_planted: ch.hooks_planted_candidates.map((c) => ({
         desc: c.desc,
         category: c.category,

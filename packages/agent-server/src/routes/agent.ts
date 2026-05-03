@@ -20,6 +20,12 @@ import {
   deleteChat as deleteChatStorage,
 } from '../storage/chat-store.js'
 import { loadChatHistoryForUi } from '../storage/chat-history.js'
+import {
+  appendUserMessage,
+  appendAssistantMessage,
+  appendToolResultPart,
+  type AssistantPartInput,
+} from '../storage/chat-db.js'
 import { readNovelIndex } from '../storage/novel-index.js'
 import { generateChatTitle } from '../lib/title-generator.js'
 
@@ -91,12 +97,16 @@ app.post('/:id/chats/:cid/message', async (c) => {
   const chat = await getChat(novelId, chatId)
   if (!chat) return c.json({ error: 'chat_not_found' }, 404)
 
-  // active 锁判断
+  // active 锁判断：只有真在 streaming 才阻塞，否则自动释放旧 chat
   const active = getActiveChat(novelId)
   if (active && active.chatId !== chatId) {
-    return c.json({ error: 'another_chat_running', activeChatId: active.chatId }, 409)
+    const activeEntry = getChatEntry(novelId, active.chatId)
+    if (activeEntry?.isStreaming) {
+      return c.json({ error: 'another_chat_running', activeChatId: active.chatId }, 409)
+    }
+    releaseChat(novelId)
   }
-  const existing = active ? getChatEntry(novelId, chatId) : null
+  const existing = getChatEntry(novelId, chatId)
   if (existing?.isStreaming) {
     return c.json({ error: 'chat_busy' }, 409)
   }
@@ -117,6 +127,7 @@ app.post('/:id/chats/:cid/message', async (c) => {
   }
 
   if (content.trim()) {
+    appendUserMessage(novelId, chatId, content.trim())
     await touchChatLastMsg(novelId, chatId, content.trim())
     if (chat.title === '新对话') {
       void generateChatTitle(content.trim())
@@ -146,7 +157,7 @@ app.post('/:id/chats/:cid/stop', (c) => {
 
 // ───── SSE plumbing ────────────────────────────────────────────────────────
 
-function runWithStream(
+export function runWithStream(
   abortSignal: AbortSignal,
   entry: ChatEntry,
   userText: string | null,
@@ -155,23 +166,32 @@ function runWithStream(
     start(controller) {
       const enc = new TextEncoder()
       let closed = false
+      let ka: ReturnType<typeof setInterval> | undefined
+      let unsubscribe: (() => void) | undefined
       const write = (event: AgentEvent) => {
         if (closed) return
         try {
-          controller.enqueue(enc.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`))
+          controller.enqueue(enc.encode(serializeSseEvent(event)))
         } catch { /* closed */ }
       }
       const close = () => {
         if (closed) return
         closed = true
-        clearInterval(ka)
-        try { unsubscribe() } catch { /* ignore */ }
+        if (ka) clearInterval(ka)
+        abortSignal.removeEventListener('abort', close)
+        try { unsubscribe?.() } catch { /* ignore */ }
         try { controller.close() } catch { /* ignore */ }
         setStreaming(entry.novelId, entry.chatId, false)
         setStreamCloser(entry.novelId, entry.chatId, undefined)
       }
-      const unsubscribe = subscribeChatSession(entry.session, write, close)
-      const ka = setInterval(() => {
+      unsubscribe = subscribeChatSession(
+        entry.novelId,
+        entry.chatId,
+        entry.session,
+        write,
+        close,
+      )
+      ka = setInterval(() => {
         if (closed) return
         try { controller.enqueue(enc.encode(`: keepalive\n\n`)) } catch { /* closed */ }
       }, 15_000)
@@ -197,61 +217,112 @@ function runWithStream(
 }
 
 function subscribeChatSession(
+  novelId: string,
+  chatId: string,
   session: AgentSession,
   write: (event: AgentEvent) => void,
   close: () => void,
 ): () => void {
   return session.subscribe((evt) => {
-    switch (evt.type) {
-      case 'message_update': {
-        const inner = evt.assistantMessageEvent
-        if (inner.type === 'text_delta' && typeof inner.delta === 'string' && inner.delta.length > 0) {
-          write({ type: 'message.delta', content: inner.delta })
-        }
-        return
-      }
-      case 'message_end': {
-        const msg = evt.message
-        if (msg && msg.role === 'assistant') {
-          const textParts: string[] = []
-          for (const block of msg.content ?? []) {
-            if (block && typeof block === 'object' && (block as { type?: string }).type === 'text') {
-              const t = (block as { text?: unknown }).text
-              if (typeof t === 'string') textParts.push(t)
-            }
-          }
-          const full = textParts.join('')
-          if (full.length > 0) write({ type: 'message.complete', content: full })
-        }
-        return
-      }
-      case 'tool_execution_start': {
-        write({ type: 'tool.call', id: evt.toolCallId, name: evt.toolName, params: evt.args })
-        return
-      }
-      case 'tool_execution_end': {
-        write({ type: 'tool.result', id: evt.toolCallId, name: evt.toolName, result: evt.result })
-        return
-      }
-      case 'agent_end': {
-        write({ type: 'done' })
-        close()
-        return
-      }
-      default: {
-        const t = (evt as { type?: string }).type
-        if (t === 'error' || t === 'agent_error') {
-          const msg =
-            (evt as { error?: { message?: string }; message?: string }).error?.message ??
-            (evt as { message?: string }).message ??
-            `agent error: ${t}`
-          write({ type: 'error', message: msg })
-          close()
-        }
-        return
-      }
+    try {
+      handleChatSessionEvent(novelId, chatId, evt, write, close)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[agent] event handler failed novel=${novelId} chat=${chatId}: ${message}`, err)
+      write({ type: 'error', message })
+      close()
     }
   })
+}
+
+function handleChatSessionEvent(
+  novelId: string,
+  chatId: string,
+  evt: Parameters<AgentSession['subscribe']>[0] extends (event: infer E) => void ? E : never,
+  write: (event: AgentEvent) => void,
+  close: () => void,
+): void {
+  switch (evt.type) {
+    case 'message_update': {
+      const inner = evt.assistantMessageEvent
+      if (inner.type === 'text_delta' && typeof inner.delta === 'string' && inner.delta.length > 0) {
+        write({ type: 'message.delta', content: inner.delta })
+      }
+      return
+    }
+    case 'message_end': {
+      const msg = evt.message
+      if (msg && msg.role === 'assistant') {
+        const textParts: string[] = []
+        const persistParts: AssistantPartInput[] = []
+        for (const block of msg.content ?? []) {
+          if (!block || typeof block !== 'object') continue
+          const b = block as { type?: string; text?: unknown; thinking?: unknown; id?: unknown; name?: unknown; arguments?: unknown }
+          if (b.type === 'text' && typeof b.text === 'string') {
+            textParts.push(b.text)
+            if (b.text.length > 0) persistParts.push({ type: 'text', data: { text: b.text } })
+          } else if (b.type === 'thinking' && typeof b.thinking === 'string') {
+            if (b.thinking.length > 0) persistParts.push({ type: 'reasoning', data: { text: b.thinking } })
+          } else if (b.type === 'toolCall') {
+            persistParts.push({
+              type: 'tool_call',
+              data: {
+                tool_call_id: typeof b.id === 'string' ? b.id : '',
+                name: typeof b.name === 'string' ? b.name : '',
+                args: b.arguments ?? {},
+              },
+            })
+          }
+        }
+        if (persistParts.length > 0) {
+          try { appendAssistantMessage(novelId, chatId, persistParts) } catch (e) { console.error('[chat-db] append assistant', e) }
+        }
+        const full = textParts.join('')
+        if (full.length > 0) write({ type: 'message.complete', content: full })
+      }
+      return
+    }
+    case 'tool_execution_start': {
+      write({ type: 'tool.call', id: evt.toolCallId, name: evt.toolName, params: evt.args })
+      return
+    }
+    case 'tool_execution_end': {
+      try { appendToolResultPart(chatId, evt.toolCallId, evt.result, Boolean((evt as { isError?: boolean }).isError)) } catch (e) { console.error('[chat-db] tool result', e) }
+      write({ type: 'tool.result', id: evt.toolCallId, name: evt.toolName, result: evt.result })
+      return
+    }
+    case 'agent_end': {
+      console.log(`[agent] end novel=${novelId} chat=${chatId} messages=${evt.messages.length}`)
+      write({ type: 'done' })
+      close()
+      return
+    }
+    default: {
+      const t = (evt as { type?: string }).type
+      if (t === 'error' || t === 'agent_error') {
+        const msg =
+          (evt as { error?: { message?: string }; message?: string }).error?.message ??
+          (evt as { message?: string }).message ??
+          `agent error: ${t}`
+        console.error(`[agent] ${t} novel=${novelId} chat=${chatId}: ${msg}`, evt)
+        write({ type: 'error', message: msg })
+        close()
+      } else {
+        console.log(`[agent] evt novel=${novelId} chat=${chatId} type=${t}`)
+      }
+      return
+    }
+  }
+}
+
+function serializeSseEvent(event: AgentEvent): string {
+  try {
+    return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const fallback: AgentEvent = { type: 'error', message: `事件序列化失败: ${message}` }
+    return `event: error\ndata: ${JSON.stringify(fallback)}\n\n`
+  }
 }
 
 export { app as agentRoutes }

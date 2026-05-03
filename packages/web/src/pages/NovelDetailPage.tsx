@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { HookCategory } from '@novel-agent/shared'
+import type {
+  CharacterStoryFunction,
+  HookCategory,
+  Replaceability,
+  WritingRhythm,
+} from '@novel-agent/shared'
 import { api } from '../lib/api'
 import { cn, statusLabel, statusStyle } from '../lib/ui'
 import { useConfirm } from '../lib/use-confirm'
@@ -210,6 +215,7 @@ function ChaptersTab({ novelId }: { novelId: string }) {
     queryKey: ['chapters', novelId],
     queryFn: () => api.listChapters(novelId),
   })
+  const [expanded, setExpanded] = useState<number | null>(null)
   if (isLoading) return <p className="text-sm text-neutral-400">加载中...</p>
   if (error)
     return <p className="text-sm text-rose-600">{(error as Error).message}</p>
@@ -217,24 +223,242 @@ function ChaptersTab({ novelId }: { novelId: string }) {
     return <p className="text-sm text-neutral-400">暂无数据</p>
   return (
     <ul className="space-y-2">
-      {data.map((c) => (
-        <li
-          key={c.id}
-          className="rounded border border-neutral-200 bg-white p-3 text-sm"
-        >
-          <div className="font-medium">
-            <span className="text-neutral-400 mr-2">第{c.number}章</span>
-            {c.title.replace(/^第[^章]*章\s*/, '')}
-          </div>
-          {c.summary ? (
-            <p className="text-neutral-700 mt-1 leading-relaxed">{c.summary}</p>
-          ) : (
-            <p className="text-neutral-400 mt-1 text-xs">（尚无摘要）</p>
-          )}
-        </li>
-      ))}
+      {data.map((c) => {
+        const isOpen = expanded === c.number
+        return (
+          <li
+            key={c.id}
+            className="rounded border border-neutral-200 bg-white p-3 text-sm"
+          >
+            <div className="flex items-start gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium">
+                  <span className="text-neutral-400 mr-2">第{c.number}章</span>
+                  {c.title.replace(/^第[^章]*章\s*/, '')}
+                </div>
+                {(c.plot_functions?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {c.plot_functions!.map((f, i) => (
+                      <span
+                        key={i}
+                        className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800"
+                      >
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {c.summary ? (
+                  <p className="text-neutral-700 mt-2 leading-relaxed">{c.summary}</p>
+                ) : (
+                  <p className="text-neutral-400 mt-2 text-xs">（尚无摘要）</p>
+                )}
+                {(c.originality_risks?.length ?? 0) > 0 && (
+                  <div className="mt-2 text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded px-2 py-1.5">
+                    <span className="font-medium">⚠ 标志性桥段（改写避开）：</span>
+                    <ul className="list-disc list-inside mt-0.5 space-y-0.5">
+                      {c.originality_risks!.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setExpanded(isOpen ? null : c.number)}
+                className="text-xs text-neutral-500 hover:text-neutral-900 px-2 py-0.5 rounded border border-neutral-200 shrink-0 mt-0.5"
+              >
+                {isOpen ? '收起' : '详情'}
+              </button>
+            </div>
+            {isOpen && <ChapterDetail novelId={novelId} number={c.number} />}
+          </li>
+        )
+      })}
     </ul>
   )
+}
+
+function ChapterDetail({ novelId, number }: { novelId: string; number: number }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['chapter-detail', novelId, number],
+    queryFn: () => api.getChapter(novelId, number),
+  })
+  if (isLoading)
+    return <div className="mt-3 text-xs text-neutral-400">加载中...</div>
+  if (error)
+    return (
+      <div className="mt-3 text-xs text-rose-600">
+        {(error as Error).message}
+      </div>
+    )
+  if (!data) return null
+  return (
+    <div className="mt-3 pt-3 border-t border-neutral-100 space-y-3">
+      {(data.key_events?.length ?? 0) > 0 && (
+        <section>
+          <h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1.5">
+            关键事件
+          </h4>
+          <ul className="space-y-1.5">
+            {data.key_events!.map((e, i) => (
+              <li key={i} className="text-xs">
+                <div className="text-neutral-800">{e.desc}</div>
+                <div className="flex flex-wrap gap-1 mt-0.5">
+                  {e.function && (
+                    <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">
+                      功能：{e.function}
+                    </span>
+                  )}
+                  <span
+                    className={cn(
+                      'px-1.5 py-0.5 rounded',
+                      e.can_replace
+                        ? 'bg-amber-50 text-amber-700'
+                        : 'bg-neutral-100 text-neutral-600',
+                    )}
+                  >
+                    {e.can_replace ? '可换载体' : '不可换'}
+                  </span>
+                  {e.can_reorder && (
+                    <span className="px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">
+                      可调顺序
+                    </span>
+                  )}
+                  {e.depends_on.length > 0 && (
+                    <span className="px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
+                      依赖：{e.depends_on.join(' / ')}
+                    </span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {data.writing_rhythm && <WritingRhythmView rhythm={data.writing_rhythm} />}
+    </div>
+  )
+}
+
+function WritingRhythmView({ rhythm }: { rhythm: WritingRhythm }) {
+  const tc = rhythm.text_composition
+  const pp = rhythm.pacing_profile
+  const ec = rhythm.emotional_curve
+  const cwp = rhythm.chapter_writing_pattern
+  const rad = rhythm.reader_attention_design
+  const ratios: [string, string][] = [
+    ['动作', tc.action_narration_ratio],
+    ['对话', tc.dialogue_ratio],
+    ['心理', tc.inner_monologue_ratio],
+    ['解释', tc.exposition_ratio],
+    ['描写', tc.description_ratio],
+    ['冲突', tc.conflict_ratio],
+    ['过渡', tc.summary_transition_ratio],
+  ].filter(([, v]) => v) as [string, string][]
+  const emotions = [ec.opening_emotion, ec.middle_emotion, ec.climax_emotion, ec.ending_emotion].filter(Boolean)
+  return (
+    <section>
+      <h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1.5">
+        写作节奏
+      </h4>
+      <div className="grid sm:grid-cols-2 gap-3 text-xs">
+        {cwp.structure_type && (
+          <div className="rounded border border-neutral-100 bg-neutral-50 p-2">
+            <div className="text-neutral-500 mb-0.5">结构类型 / 核心节奏</div>
+            <div className="text-neutral-800 font-medium">{cwp.structure_type}</div>
+            {cwp.core_rhythm && (
+              <div className="text-neutral-700 mt-0.5">{cwp.core_rhythm}</div>
+            )}
+          </div>
+        )}
+        {cwp.beat_sequence.length > 0 && (
+          <div className="rounded border border-neutral-100 bg-neutral-50 p-2">
+            <div className="text-neutral-500 mb-0.5">节拍顺序</div>
+            <ol className="list-decimal list-inside space-y-0.5 text-neutral-700">
+              {cwp.beat_sequence.map((b, i) => (
+                <li key={i}>{b}</li>
+              ))}
+            </ol>
+          </div>
+        )}
+        {ratios.length > 0 && (
+          <div className="rounded border border-neutral-100 bg-neutral-50 p-2">
+            <div className="text-neutral-500 mb-0.5">文本配比</div>
+            <div className="flex flex-wrap gap-1">
+              {ratios.map(([k, v]) => (
+                <span key={k} className="px-1.5 py-0.5 rounded bg-white border border-neutral-200">
+                  {k} {v}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {(pp.opening_speed || pp.overall_rhythm) && (
+          <div className="rounded border border-neutral-100 bg-neutral-50 p-2">
+            <div className="text-neutral-500 mb-0.5">速度</div>
+            {pp.opening_speed && (
+              <div className="text-neutral-700">
+                开 {pp.opening_speed} · 中 {pp.middle_speed} · 结 {pp.ending_speed}
+              </div>
+            )}
+            {pp.overall_rhythm && <div className="text-neutral-700 mt-0.5">{pp.overall_rhythm}</div>}
+          </div>
+        )}
+        {emotions.length > 0 && (
+          <div className="rounded border border-neutral-100 bg-neutral-50 p-2">
+            <div className="text-neutral-500 mb-0.5">情绪曲线</div>
+            <div className="text-neutral-700">{emotions.join(' → ')}</div>
+            {ec.emotion_shift_points.length > 0 && (
+              <ul className="mt-1 space-y-0.5 text-neutral-600">
+                {ec.emotion_shift_points.map((p, i) => (
+                  <li key={i}>
+                    <span className="font-mono text-neutral-500">{p.position}</span>{' '}
+                    {p.from} → {p.to}（{p.trigger}）
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {(rad.opening_hook || rad.chapter_end_hook) && (
+          <div className="rounded border border-neutral-100 bg-neutral-50 p-2 sm:col-span-2">
+            <div className="text-neutral-500 mb-0.5">钩子设计</div>
+            {rad.opening_hook && (
+              <div className="text-neutral-700">开头：{rad.opening_hook}</div>
+            )}
+            {rad.chapter_end_hook && (
+              <div className="text-neutral-700 mt-0.5">章末：{rad.chapter_end_hook}</div>
+            )}
+            {rad.micro_hooks.length > 0 && (
+              <div className="text-neutral-700 mt-0.5">
+                小钩：{rad.micro_hooks.join(' · ')}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+const STORY_FUNCTION_META: Record<CharacterStoryFunction, { label: string; cls: string }> = {
+  'pressure-source': { label: '压迫源', cls: 'bg-rose-100 text-rose-800' },
+  benefactor: { label: '贵人', cls: 'bg-emerald-100 text-emerald-800' },
+  rival: { label: '竞争者', cls: 'bg-amber-100 text-amber-800' },
+  witness: { label: '见证者', cls: 'bg-sky-100 text-sky-800' },
+  'resource-gateway': { label: '资源入口', cls: 'bg-teal-100 text-teal-800' },
+  'emotional-anchor': { label: '情绪锚', cls: 'bg-pink-100 text-pink-800' },
+  'antagonist-proxy': { label: '反派代理', cls: 'bg-rose-50 text-rose-700' },
+  foil: { label: '反衬', cls: 'bg-neutral-100 text-neutral-700' },
+  'information-source': { label: '信息源', cls: 'bg-indigo-100 text-indigo-800' },
+  gatekeeper: { label: '守门人', cls: 'bg-violet-100 text-violet-800' },
+}
+
+const REPLACEABILITY_META: Record<Replaceability, { label: string; cls: string }> = {
+  high: { label: '可换身份', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+  medium: { label: '需保留关系', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+  low: { label: '身份不可换', cls: 'bg-neutral-100 text-neutral-700 border border-neutral-300' },
 }
 
 function CharactersTab({ novelId }: { novelId: string }) {
@@ -249,29 +473,47 @@ function CharactersTab({ novelId }: { novelId: string }) {
     return <p className="text-sm text-neutral-400">暂无数据（分析完才会有）</p>
   return (
     <ul className="grid sm:grid-cols-2 gap-3">
-      {data.map((c) => (
-        <li
-          key={c.id}
-          className="rounded border border-neutral-200 bg-white p-3 text-sm"
-        >
-          <div className="flex items-baseline gap-2">
-            <span className="font-medium">{c.name}</span>
-            {c.aliases.length > 0 && (
-              <span className="text-xs text-neutral-400">
-                又名 {c.aliases.join('、')}
-              </span>
+      {data.map((c) => {
+        const sf = c.story_function ? STORY_FUNCTION_META[c.story_function] : null
+        const rep = c.replaceability ? REPLACEABILITY_META[c.replaceability] : null
+        return (
+          <li
+            key={c.id}
+            className="rounded border border-neutral-200 bg-white p-3 text-sm"
+          >
+            <div className="flex items-baseline gap-2">
+              <span className="font-medium">{c.name}</span>
+              {c.aliases.length > 0 && (
+                <span className="text-xs text-neutral-400">
+                  又名 {c.aliases.join('、')}
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-neutral-500 mt-0.5">
+              第 {c.first_chapter}–{c.last_chapter} 章
+            </div>
+            {(sf || rep) && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {sf && (
+                  <span className={cn('text-xs px-1.5 py-0.5 rounded', sf.cls)}>
+                    {sf.label}
+                  </span>
+                )}
+                {rep && (
+                  <span className={cn('text-xs px-1.5 py-0.5 rounded', rep.cls)}>
+                    {rep.label}
+                  </span>
+                )}
+              </div>
             )}
-          </div>
-          <div className="text-xs text-neutral-500 mt-0.5">
-            第 {c.first_chapter}–{c.last_chapter} 章
-          </div>
-          {c.description && (
-            <p className="text-neutral-700 mt-2 leading-relaxed">
-              {c.description}
-            </p>
-          )}
-        </li>
-      ))}
+            {c.description && (
+              <p className="text-neutral-700 mt-2 leading-relaxed">
+                {c.description}
+              </p>
+            )}
+          </li>
+        )
+      })}
     </ul>
   )
 }
@@ -298,9 +540,35 @@ function SubplotsTab({ novelId }: { novelId: string }) {
             <span className="text-xs text-neutral-400">
               第 {s.start_chapter}–{s.end_chapter} 章 · {s.chapters.length} 处
             </span>
+            {s.reorderable !== undefined && (
+              <span
+                className={cn(
+                  'text-xs px-1.5 py-0.5 rounded',
+                  s.reorderable
+                    ? 'bg-violet-50 text-violet-700 border border-violet-200'
+                    : 'bg-neutral-100 text-neutral-600 border border-neutral-200',
+                )}
+              >
+                {s.reorderable ? '顺序可调' : '关键节点'}
+              </span>
+            )}
           </div>
+          {s.delivers && (
+            <div className="mt-1.5 text-xs">
+              <span className="text-neutral-500">交付：</span>
+              <span className="text-emerald-700">{s.delivers}</span>
+            </div>
+          )}
+          {(s.depends_on?.length ?? 0) > 0 && (
+            <div className="mt-1 text-xs text-neutral-500">
+              依赖支线：
+              <span className="font-mono text-neutral-700">
+                {s.depends_on!.join(' / ')}
+              </span>
+            </div>
+          )}
           {s.description && (
-            <p className="text-neutral-700 mt-1 leading-relaxed">
+            <p className="text-neutral-700 mt-1.5 leading-relaxed">
               {s.description}
             </p>
           )}

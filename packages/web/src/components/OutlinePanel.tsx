@@ -66,14 +66,29 @@ function OutlineDetail({ novelId, number }: { novelId: string; number: number })
         <span className="text-xs text-neutral-500">参考原书第 {o.source_chapter_ref} 章</span>
       </header>
       <section>
+        <h3 className="text-xs uppercase tracking-wide text-neutral-500 mb-1">剧情功能</h3>
+        {o.plot_functions.length === 0 ? (
+          <p className="text-neutral-400 text-xs">—</p>
+        ) : (
+          <ul className="list-disc list-inside space-y-0.5 text-xs text-neutral-700">
+            {o.plot_functions.map((f, i) => (
+              <li key={i}>{f}</li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section>
         <h3 className="text-xs uppercase tracking-wide text-neutral-500 mb-1">剧情</h3>
         <p className="whitespace-pre-wrap leading-relaxed">{o.plot}</p>
       </section>
       <section>
-        <h3 className="text-xs uppercase tracking-wide text-neutral-500 mb-1">关键事件</h3>
-        <ul className="list-disc list-inside space-y-0.5">
+        <h3 className="text-xs uppercase tracking-wide text-neutral-500 mb-1">关键事件（function → 新载体）</h3>
+        <ul className="space-y-1">
           {o.key_events.map((e, i) => (
-            <li key={i}>{e}</li>
+            <li key={i} className="border-l-2 border-amber-200 pl-2">
+              <div className="text-xs text-neutral-500">{e.function || '—'}</div>
+              <div>{e.new_carrier}</div>
+            </li>
           ))}
         </ul>
       </section>

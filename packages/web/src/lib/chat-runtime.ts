@@ -151,7 +151,6 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
           prev.map((m) => {
             if (m.id !== turn.id) return m
             const content: Exclude<ThreadMessageLike['content'], string>[number][] = []
-            if (turn.text) content.push({ type: 'text', text: turn.text })
             for (const tc of turn.toolCalls) {
               content.push({
                 type: 'tool-call',
@@ -161,6 +160,7 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
                 result: tc.result,
               })
             }
+            if (turn.text) content.push({ type: 'text', text: turn.text })
             return { ...m, content }
           }),
         )
@@ -197,17 +197,21 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
     convertMessage: (m) => m,
   })
 
-  return runtime
+  return { runtime, send, cancel: onCancel, isRunning }
 }
 
 function historyToThreadMessages(history: ThreadUiMessage[]): ThreadMessageLike[] {
   return history.map((m) => {
-    const content: Exclude<ThreadMessageLike['content'], string>[number][] = []
+    const reasoning: Exclude<ThreadMessageLike['content'], string>[number][] = []
+    const tools: Exclude<ThreadMessageLike['content'], string>[number][] = []
+    const texts: Exclude<ThreadMessageLike['content'], string>[number][] = []
     for (const part of m.parts) {
       if (part.type === 'text') {
-        content.push({ type: 'text', text: part.text })
+        texts.push({ type: 'text', text: part.text })
+      } else if (part.type === 'reasoning') {
+        reasoning.push({ type: 'reasoning', text: part.text })
       } else if (part.type === 'tool-call') {
-        content.push({
+        tools.push({
           type: 'tool-call',
           toolCallId: part.id,
           toolName: part.name,
@@ -216,6 +220,6 @@ function historyToThreadMessages(history: ThreadUiMessage[]): ThreadMessageLike[
         })
       }
     }
-    return { id: m.id, role: m.role, content }
+    return { id: m.id, role: m.role, content: [...reasoning, ...tools, ...texts] }
   })
 }

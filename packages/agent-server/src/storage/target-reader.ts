@@ -3,13 +3,76 @@ import { listFrontMatter, readMdIfExists } from './markdown.js'
 import { paths } from './paths.js'
 import type {
   ChapterDraftRecord,
+  CharacterMapEntry,
   MapsRecord,
+  OutlineKeyEvent,
   OutlineRecord,
 } from './target-writer.js'
 
+interface LegacyCharacterMapEntry {
+  source?: unknown
+  target?: unknown
+  note?: unknown
+  target_note?: unknown
+  source_meta?: unknown
+}
+
+function normalizeCharacterEntry(raw: unknown): CharacterMapEntry | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as LegacyCharacterMapEntry
+  const target = typeof r.target === 'string' ? r.target : null
+  if (!target) return null
+  const source = typeof r.source === 'string' && r.source.length > 0 ? r.source : null
+  const target_note =
+    typeof r.target_note === 'string'
+      ? r.target_note
+      : typeof r.note === 'string'
+        ? r.note
+        : null
+  const sm = r.source_meta && typeof r.source_meta === 'object'
+    ? (r.source_meta as Record<string, unknown>)
+    : null
+  const source_meta = sm
+    ? {
+        role: typeof sm['role'] === 'string' ? (sm['role'] as string) : null,
+        story_function:
+          typeof sm['story_function'] === 'string' ? (sm['story_function'] as string) : null,
+        replaceability:
+          typeof sm['replaceability'] === 'string' ? (sm['replaceability'] as string) : null,
+        first_chapter:
+          typeof sm['first_chapter'] === 'number' ? (sm['first_chapter'] as number) : null,
+        last_chapter:
+          typeof sm['last_chapter'] === 'number' ? (sm['last_chapter'] as number) : null,
+        description: typeof sm['description'] === 'string' ? (sm['description'] as string) : '',
+      }
+    : null
+  return { source, target, source_meta, target_note }
+}
+
 export async function readMaps(novelId: string): Promise<MapsRecord | null> {
-  const md = await readMdIfExists<MapsRecord>(paths.targetMaps(novelId))
-  return md ? md.frontMatter : null
+  const md = await readMdIfExists<{
+    character_map?: unknown[]
+    setting_map?: MapsRecord['setting_map']
+  }>(paths.targetMaps(novelId))
+  if (!md) return null
+  const rawList = Array.isArray(md.frontMatter.character_map) ? md.frontMatter.character_map : []
+  const character_map = rawList
+    .map(normalizeCharacterEntry)
+    .filter((e): e is CharacterMapEntry => e !== null)
+  return {
+    character_map,
+    setting_map: md.frontMatter.setting_map ?? null,
+  }
+}
+
+function normalizeOutlineKeyEvents(
+  raw: OutlineKeyEvent[] | string[] | undefined,
+): OutlineKeyEvent[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((e) => {
+    if (typeof e === 'string') return { function: '', new_carrier: e }
+    return { function: String(e.function ?? ''), new_carrier: String(e.new_carrier ?? '') }
+  })
 }
 
 export async function readOutline(
@@ -18,21 +81,22 @@ export async function readOutline(
 ): Promise<OutlineRecord | null> {
   const md = await readMdIfExists(paths.targetOutline(novelId, number))
   if (!md) return null
-  const fm = md.frontMatter as Partial<OutlineRecord>
+  const fm = md.frontMatter as Partial<OutlineRecord> & {
+    key_events?: OutlineKeyEvent[] | string[]
+  }
   const plotMatch = md.body.match(/##\s*剧情\s*\n([\s\S]*?)(?=\n##\s|$)/)
-  const eventsMatch = md.body.match(/##\s*关键事件\s*\n([\s\S]*?)(?=\n##\s|$)/)
-  const events = (eventsMatch?.[1] ?? '')
-    .split('\n')
-    .map((l) => l.replace(/^\s*-\s*/, '').trim())
-    .filter(Boolean)
   return {
     number: fm.number ?? number,
     source_chapter_ref: fm.source_chapter_ref ?? number,
+    plot_functions: fm.plot_functions ?? [],
     hooks_to_plant: fm.hooks_to_plant ?? [],
     hooks_to_payoff: fm.hooks_to_payoff ?? [],
     planned_state_changes: fm.planned_state_changes ?? { character_deaths: [], new_settings: [] },
     plot: plotMatch?.[1]?.trim() ?? '',
-    key_events: events,
+    key_events: normalizeOutlineKeyEvents(fm.key_events),
+    referenced_characters: Array.isArray(fm.referenced_characters)
+      ? fm.referenced_characters.filter((s): s is string => typeof s === 'string')
+      : [],
   }
 }
 
