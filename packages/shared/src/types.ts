@@ -188,6 +188,7 @@ export type ActiveTask = { chatId: string } | null
 export type AgentEvent =
   | { type: 'message.delta'; content: string }
   | { type: 'message.complete'; content: string }
+  | { type: 'reasoning.delta'; content: string }
   | { type: 'tool.call'; id: string; name: string; params: unknown }
   | { type: 'tool.result'; id: string; name: string; result: unknown }
   | { type: 'done' }

@@ -16,16 +16,18 @@ export interface ChatRuntimeOptions {
 interface ToolCallState {
   id: string
   name: string
-  ok: boolean | null
-  summary: string
   params?: unknown
   result?: unknown
 }
 
+type AssistantTurnPart =
+  | { type: 'text'; text: string }
+  | { type: 'reasoning'; text: string }
+  | ({ type: 'tool-call' } & ToolCallState)
+
 interface AssistantTurn {
   id: string
-  text: string
-  toolCalls: ToolCallState[]
+  parts: AssistantTurnPart[]
 }
 
 export function useChatRuntime(opts: ChatRuntimeOptions) {
@@ -76,7 +78,7 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
         { id: `u-${Date.now()}`, role: 'user', content: [{ type: 'text', text }] },
       ])
       const assistantId = `a-${Date.now()}`
-      const turn: AssistantTurn = { id: assistantId, text: '', toolCalls: [] }
+      const turn: AssistantTurn = { id: assistantId, parts: [] }
       setMessages((prev) => [
         ...prev,
         { id: assistantId, role: 'assistant', content: [{ type: 'text', text: '' }] },
@@ -114,34 +116,34 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
 
       function handleEvent(type: string, payload: Record<string, unknown>) {
         if (type === 'message.delta') {
-          turn.text += String(payload['content'] ?? '')
+          appendTextPart(turn, String(payload['content'] ?? ''))
           rerender()
         } else if (type === 'message.complete') {
-          turn.text = String(payload['content'] ?? turn.text)
+          completeTextPart(turn, String(payload['content'] ?? ''))
+          rerender()
+        } else if (type === 'reasoning.delta') {
+          appendReasoningPart(turn, String(payload['content'] ?? ''))
           rerender()
         } else if (type === 'tool.call') {
-          turn.toolCalls.push({
+          turn.parts.push({
+            type: 'tool-call',
             id: String(payload['id'] ?? '?'),
             name: String(payload['name'] ?? '?'),
-            ok: null,
-            summary: '调用中...',
             params: payload['params'],
           })
           rerender()
         } else if (type === 'tool.result') {
           const id = String(payload['id'] ?? '')
-          const tc = turn.toolCalls.find((t) => t.id === id)
+          const tc = turn.parts.find((t): t is Extract<AssistantTurnPart, { type: 'tool-call' }> =>
+            t.type === 'tool-call' && t.id === id)
           if (tc) {
-            const result = payload['result'] as { ok?: boolean } | undefined
-            tc.ok = result?.ok !== false
-            tc.summary = result?.ok === false ? '校验失败' : '完成'
             tc.result = payload['result']
           }
           rerender()
         } else if (type === 'done') {
           // stream end
         } else if (type === 'error') {
-          turn.text += `\n\n[错误] ${String(payload['message'] ?? 'unknown')}`
+          appendTextPart(turn, `\n\n[错误] ${String(payload['message'] ?? 'unknown')}`)
           rerender()
         }
       }
@@ -151,16 +153,22 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
           prev.map((m) => {
             if (m.id !== turn.id) return m
             const content: Exclude<ThreadMessageLike['content'], string>[number][] = []
-            for (const tc of turn.toolCalls) {
-              content.push({
-                type: 'tool-call',
-                toolCallId: tc.id,
-                toolName: tc.name,
-                args: (tc.params ?? {}) as never,
-                result: tc.result,
-              })
+            for (const part of turn.parts) {
+              if (part.type === 'reasoning') {
+                if (part.text.trim()) content.push({ type: 'reasoning', text: part.text })
+              } else if (part.type === 'tool-call') {
+                content.push({
+                  type: 'tool-call',
+                  toolCallId: part.id,
+                  toolName: part.name,
+                  args: (part.params ?? {}) as never,
+                  result: part.result,
+                })
+              } else {
+                const text = stripThinkLeak(part.text)
+                if (text) content.push({ type: 'text', text })
+              }
             }
-            if (turn.text) content.push({ type: 'text', text: turn.text })
             return { ...m, content }
           }),
         )
@@ -202,16 +210,15 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
 
 function historyToThreadMessages(history: ThreadUiMessage[]): ThreadMessageLike[] {
   return history.map((m) => {
-    const reasoning: Exclude<ThreadMessageLike['content'], string>[number][] = []
-    const tools: Exclude<ThreadMessageLike['content'], string>[number][] = []
-    const texts: Exclude<ThreadMessageLike['content'], string>[number][] = []
+    const content: Exclude<ThreadMessageLike['content'], string>[number][] = []
     for (const part of m.parts) {
       if (part.type === 'text') {
-        texts.push({ type: 'text', text: part.text })
+        const text = stripThinkLeak(part.text)
+        if (text) content.push({ type: 'text', text })
       } else if (part.type === 'reasoning') {
-        reasoning.push({ type: 'reasoning', text: part.text })
+        content.push({ type: 'reasoning', text: part.text })
       } else if (part.type === 'tool-call') {
-        tools.push({
+        content.push({
           type: 'tool-call',
           toolCallId: part.id,
           toolName: part.name,
@@ -220,6 +227,45 @@ function historyToThreadMessages(history: ThreadUiMessage[]): ThreadMessageLike[
         })
       }
     }
-    return { id: m.id, role: m.role, content: [...reasoning, ...tools, ...texts] }
+    return { id: m.id, role: m.role, content }
   })
+}
+
+function appendReasoningPart(turn: AssistantTurn, text: string) {
+  if (!text) return
+  const last = turn.parts[turn.parts.length - 1]
+  if (last?.type === 'reasoning') {
+    last.text += text
+  } else {
+    turn.parts.push({ type: 'reasoning', text })
+  }
+}
+
+function appendTextPart(turn: AssistantTurn, text: string) {
+  if (!text) return
+  const last = turn.parts[turn.parts.length - 1]
+  if (last?.type === 'text') {
+    last.text += text
+  } else {
+    turn.parts.push({ type: 'text', text })
+  }
+}
+
+function completeTextPart(turn: AssistantTurn, text: string) {
+  if (!text) return
+  const textParts = turn.parts.filter((part): part is Extract<AssistantTurnPart, { type: 'text' }> =>
+    part.type === 'text')
+  if (textParts.length === 0) {
+    turn.parts.push({ type: 'text', text })
+    return
+  }
+  textParts[0]!.text = text
+  for (const part of textParts.slice(1)) part.text = ''
+}
+
+function stripThinkLeak(text: string): string {
+  const closeTag = '</think>'
+  const index = text.lastIndexOf(closeTag)
+  if (index < 0) return text
+  return text.slice(index + closeTag.length).trimStart()
 }

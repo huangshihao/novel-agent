@@ -247,6 +247,8 @@ function handleChatSessionEvent(
       const inner = evt.assistantMessageEvent
       if (inner.type === 'text_delta' && typeof inner.delta === 'string' && inner.delta.length > 0) {
         write({ type: 'message.delta', content: inner.delta })
+      } else if (inner.type === 'thinking_delta' && typeof inner.delta === 'string' && inner.delta.length > 0) {
+        write({ type: 'reasoning.delta', content: inner.delta })
       }
       return
     }
@@ -276,6 +278,11 @@ function handleChatSessionEvent(
         }
         if (persistParts.length > 0) {
           try { appendAssistantMessage(novelId, chatId, persistParts) } catch (e) { console.error('[chat-db] append assistant', e) }
+        }
+        if (isReasoningOnlyAssistantMessage(persistParts, msg)) {
+          write({ type: 'error', message: '模型只输出了思考内容，没有给出正文或工具调用，本轮已中止。' })
+          close()
+          return
         }
         const full = textParts.join('')
         if (full.length > 0) write({ type: 'message.complete', content: full })
@@ -313,6 +320,16 @@ function handleChatSessionEvent(
       return
     }
   }
+}
+
+function isReasoningOnlyAssistantMessage(
+  parts: AssistantPartInput[],
+  msg: { stopReason?: unknown },
+): boolean {
+  const hasReasoning = parts.some((part) => part.type === 'reasoning')
+  const hasVisibleOutput = parts.some((part) => part.type === 'text' || part.type === 'tool_call')
+  const stopReason = typeof msg.stopReason === 'string' ? msg.stopReason : ''
+  return hasReasoning && !hasVisibleOutput && (stopReason === 'stop' || stopReason === 'length')
 }
 
 function serializeSseEvent(event: AgentEvent): string {

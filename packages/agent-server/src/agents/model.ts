@@ -1,6 +1,15 @@
 import type { Model } from '@mariozechner/pi-ai'
 
 export const AGENT_PROVIDER = 'baiduqianfancodingplan'
+const DEFAULT_AGENT_MAX_TOKENS = 8192
+
+function readAgentMaxTokens(): number {
+  const raw = process.env['AGENT_MAX_TOKENS']
+  if (!raw) return DEFAULT_AGENT_MAX_TOKENS
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_AGENT_MAX_TOKENS
+  return Math.floor(value)
+}
 
 export function buildAgentModel(): Model<'openai-completions'> {
   return {
@@ -13,7 +22,7 @@ export function buildAgentModel(): Model<'openai-completions'> {
     input: ['text'],
     cost: { input: 0.0025, output: 0.01, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 98304,
-    maxTokens: 65536,
+    maxTokens: readAgentMaxTokens(),
     compat: {
       supportsDeveloperRole: false,
       supportsStore: false,
