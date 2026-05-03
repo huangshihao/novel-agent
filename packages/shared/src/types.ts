@@ -238,16 +238,20 @@ export interface OutlineKeyEvent {
 }
 
 export type RetentionHookType =
+  | 'suspense'
   | 'crisis'
+  | 'payoff'
+  | 'goal'
+  | 'secret'
+  | 'relation'
+  | 'rule'
+  | 'contrast'
+  | 'emotion'
   | 'information'
   | 'identity'
-  | 'relation'
-  | 'goal'
   | 'reward'
   | 'punishment'
   | 'reversal'
-  | 'secret'
-  | 'emotion'
 
 export interface ReaderContract {
   core_emotion: string

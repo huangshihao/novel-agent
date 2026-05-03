@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { Value } from '@sinclair/typebox/value'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -183,5 +184,33 @@ describe('buildWriteChapterOutlineTool', () => {
 
     expect(r.details.ok).toBe(false)
     expect(r.details.issues?.some((s) => s.includes('hook_plans') && s.includes('nhk-001'))).toBe(true)
+  })
+
+  it('accepts source hook categories in hook_plans schema', () => {
+    const tool = buildWriteChapterOutlineTool(novelId, { from: 1, to: 10 })
+    const outline = baseOutline(4, ['陈峰'])
+    outline.hooks_to_plant = ['nhk-001']
+    const params = {
+      ...outline,
+      hook_plans: [
+        {
+          id: 'nhk-001',
+          type: 'suspense',
+          description: '某个山中白影的真实身份',
+          expected_payoff_chapter: 8,
+          payoff_plan: '第 8 章揭示白影只是山兽留下的误导线索',
+        },
+      ],
+    }
+
+    expect(Value.Check(tool.parameters, params)).toBe(true)
+  })
+
+  it('lists allowed hook plan types in prompt guidelines', () => {
+    const tool = buildWriteChapterOutlineTool(novelId, { from: 1, to: 10 })
+
+    expect(tool.promptGuidelines?.join('\n')).toContain(
+      'type 只能取：suspense / crisis / payoff / goal / secret / relation / rule / contrast / emotion / information / identity / reward / punishment / reversal',
+    )
   })
 })

@@ -5,6 +5,23 @@ import { readMaps } from '../../storage/target-reader.js'
 import { writeOutline, type OutlineRecord } from '../../storage/target-writer.js'
 import { readState } from '../../storage/state.js'
 
+const HOOK_PLAN_TYPES = [
+  'suspense',
+  'crisis',
+  'payoff',
+  'goal',
+  'secret',
+  'relation',
+  'rule',
+  'contrast',
+  'emotion',
+  'information',
+  'identity',
+  'reward',
+  'punishment',
+  'reversal',
+] as const
+
 export interface BatchRange {
   from: number
   to: number
@@ -53,16 +70,7 @@ export function buildWriteChapterOutlineTool(
   const hookPlanSchema = Type.Object({
     id: Type.String(),
     type: Type.Union([
-      Type.Literal('crisis'),
-      Type.Literal('information'),
-      Type.Literal('identity'),
-      Type.Literal('relation'),
-      Type.Literal('goal'),
-      Type.Literal('reward'),
-      Type.Literal('punishment'),
-      Type.Literal('reversal'),
-      Type.Literal('secret'),
-      Type.Literal('emotion'),
+      ...HOOK_PLAN_TYPES.map((type) => Type.Literal(type)),
     ]),
     description: Type.String(),
     expected_payoff_chapter: Type.Number(),
@@ -86,7 +94,7 @@ export function buildWriteChapterOutlineTool(
       '**同题材边界**：所有 new_carrier 必须落在 meta.industry / era / world_rules 的语境内（参考 getOutlineContext.meta），不得引入超出原书技术水位/写实度的元素',
       '**支线重排**：getOutlineContext.involved_subplots 里 reorderable=true 且无 depends_on 的支线，主动考虑挪位',
       'hooks_to_plant 列本章新埋的长线伏笔（id 是你自定义的，nhk-001 风格）；hooks_to_payoff 列本章兑现的伏笔 id',
-      '**hook_plans 必须覆盖每个 hooks_to_plant**：写清 type / description / expected_payoff_chapter / payoff_plan。不要只埋坑不设计兑现',
+      `**hook_plans 必须覆盖每个 hooks_to_plant**：写清 type / description / expected_payoff_chapter / payoff_plan。type 只能取：${HOOK_PLAN_TYPES.join(' / ')}。不要只埋坑不设计兑现`,
       '**retention_plan 必填**：按“承接上章钩子 → 本章目标 → 新阻碍 → 中段转折 → 小兑现 → 章末钩子 → 读者期待”写具体情节，不能写空泛词',
       '**黄金三章**：第 1 章 golden_three_plan.chapter_role=strong_situation，强处境开局；第 2 章=first_payoff，必须兑现第一个小爽点/情绪点；第 3 章=mainline_lock，必须确立主线和长线问题',
       'planned_state_changes.character_deaths 里的角色名必须用 character_map.target 形式',
