@@ -99,6 +99,10 @@ export function useChatRuntime(opts: ChatRuntimeOptions) {
             handleEvent(m[1]!, JSON.parse(m[2]!) as Record<string, unknown>)
           }
         }
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          throw err
+        }
       } finally {
         setIsRunning(false)
         abortRef.current = null

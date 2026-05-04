@@ -5,6 +5,7 @@ import { createChatAgent } from '../agents/chat-session.js'
 import {
   claimChat,
   releaseChat,
+  stopChat,
   getActiveChat,
   getChatEntry,
   setStreaming,
@@ -83,7 +84,7 @@ app.delete('/:id/chats/:cid', async (c) => {
   const novelId = c.req.param('id')
   const chatId = c.req.param('cid')
   const active = getActiveChat(novelId)
-  if (active?.chatId === chatId) releaseChat(novelId)
+  if (active?.chatId === chatId) await stopChat(novelId, chatId)
   await deleteChatStorage(novelId, chatId)
   return c.body(null, 204)
 })
@@ -146,12 +147,12 @@ app.post('/:id/chats/:cid/message', async (c) => {
   )
 })
 
-app.post('/:id/chats/:cid/stop', (c) => {
+app.post('/:id/chats/:cid/stop', async (c) => {
   const novelId = c.req.param('id')
   const chatId = c.req.param('cid')
   const entry = getChatEntry(novelId, chatId)
   if (!entry) return c.json({ error: 'chat_not_active' }, 404)
-  releaseChat(novelId)
+  await stopChat(novelId, chatId)
   return c.body(null, 204)
 })
 
@@ -168,6 +169,7 @@ export function runWithStream(
       let closed = false
       let ka: ReturnType<typeof setInterval> | undefined
       let unsubscribe: (() => void) | undefined
+      let onAbort: (() => void) | undefined
       const write = (event: AgentEvent) => {
         if (closed) return
         try {
@@ -178,7 +180,7 @@ export function runWithStream(
         if (closed) return
         closed = true
         if (ka) clearInterval(ka)
-        abortSignal.removeEventListener('abort', close)
+        if (onAbort) abortSignal.removeEventListener('abort', onAbort)
         try { unsubscribe?.() } catch { /* ignore */ }
         try { controller.close() } catch { /* ignore */ }
         setStreaming(entry.novelId, entry.chatId, false)
@@ -195,7 +197,11 @@ export function runWithStream(
         if (closed) return
         try { controller.enqueue(enc.encode(`: keepalive\n\n`)) } catch { /* closed */ }
       }, 15_000)
-      abortSignal.addEventListener('abort', close)
+      onAbort = () => {
+        close()
+        void stopChat(entry.novelId, entry.chatId)
+      }
+      abortSignal.addEventListener('abort', onAbort)
       setStreaming(entry.novelId, entry.chatId, true)
       setStreamCloser(entry.novelId, entry.chatId, close)
       if (userText !== null) {

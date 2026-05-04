@@ -33,13 +33,19 @@ export function ChatSidebar({ novelId, selectedChatId, onSelect }: Props) {
 
   const deleteMut = useMutation({
     mutationFn: (chatId: string) => chatApi.delete(novelId, chatId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['chats', novelId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chats', novelId] })
+      qc.invalidateQueries({ queryKey: ['agent-active', novelId] })
+    },
   })
 
   const onDelete = async (chatId: string) => {
+    const isRunning = active?.chatId === chatId
     const ok = await confirm({
       title: '删除 chat',
-      message: '删除这个 chat？历史会一起删掉。',
+      message: isRunning
+        ? '这个 chat 还在运行。删除会先停止后台任务，再删除历史。'
+        : '删除这个 chat？历史会一起删掉。',
       confirmLabel: '删除',
       tone: 'danger',
     })
