@@ -1,11 +1,25 @@
 import { DeepSeekClient } from '../deepseek-client.js'
+import { OpenAIResponsesClient } from '../openai-responses-client.js'
+
+const DEFAULT_ANALYZER_RESPONSES_URL = 'http://localhost:23001/proxy/plugin:openai-codex-auth:openai-codex/v1/responses'
 
 /**
- * Analyzer 用：必须支持严格 JSON mode（response_format: json_object）。
- * 实测百度千帆 qianfan-code-latest 的 JSON mode 不靠谱，会输出非严格 JSON 导致解析失败，
- * 所以 analyzer 强制走 DeepSeek。
+ * Analyzer 默认走本地 OpenAI Responses 代理；设置 ANALYZER_LLM_PROVIDER=deepseek 可切回原 DeepSeek。
  */
-export function buildAnalyzerLlmClient(): DeepSeekClient {
+export function buildAnalyzerLlmClient(): DeepSeekClient | OpenAIResponsesClient {
+  const provider = (process.env['ANALYZER_LLM_PROVIDER'] ?? 'responses').toLowerCase()
+  if (provider === 'deepseek') return buildAnalyzerDeepSeekClient()
+  if (provider !== 'responses') {
+    throw new Error(`unsupported ANALYZER_LLM_PROVIDER: ${provider}`)
+  }
+  return new OpenAIResponsesClient({
+    apiKey: process.env['ANALYZER_API_KEY'] || process.env['OPENAI_API_KEY'],
+    model: process.env['ANALYZER_MODEL'] ?? 'gpt-5.5',
+    url: process.env['ANALYZER_RESPONSES_URL'] ?? DEFAULT_ANALYZER_RESPONSES_URL,
+  })
+}
+
+function buildAnalyzerDeepSeekClient(): DeepSeekClient {
   const apiKey = process.env['DEEPSEEK_API_KEY']
   if (!apiKey) {
     throw new Error('DEEPSEEK_API_KEY is required for analyzer (needs strict JSON mode)')

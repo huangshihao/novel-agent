@@ -123,6 +123,7 @@ export async function readOutline(
       ? fm.referenced_characters.filter((s): s is string => typeof s === 'string')
       : [],
     retention_plan: fm.retention_plan ?? null,
+    reader_experience_plan: fm.reader_experience_plan ?? null,
     golden_three_plan: fm.golden_three_plan ?? null,
     hook_plans: normalizeHookPlans(fm.hook_plans),
   }

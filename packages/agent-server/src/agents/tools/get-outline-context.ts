@@ -9,21 +9,54 @@ import {
   readSourceMeta,
   readSourceSubplots,
 } from '../../storage/source-reader.js'
+import { readNovelIndex } from '../../storage/novel-index.js'
 import { sanitizeMapsForAgent } from './context-sanitize.js'
+
+function needsMetaFallback(meta: Awaited<ReturnType<typeof readSourceMeta>>): boolean {
+  return !meta ||
+    (!meta.industry.trim() &&
+      !meta.era.trim() &&
+      meta.genre_tags.length === 0 &&
+      meta.world_rules.length === 0)
+}
+
+async function buildEffectiveMeta(novelId: string) {
+  const meta = await readSourceMeta(novelId)
+  if (!needsMetaFallback(meta)) return meta
+
+  const novel = await readNovelIndex(novelId)
+  const title = `${meta?.title ?? ''} ${novel?.title ?? ''}`
+  if (/195\d|196\d|年代|打猎|狩猎|深山|山/.test(title)) {
+    return {
+      title: meta?.title ?? novel?.title ?? '',
+      chapter_count: meta?.chapter_count ?? novel?.chapter_count ?? 0,
+      industry: '1950年代深山狩猎求生',
+      era: '1950年代',
+      genre_tags: ['重生', '种田'],
+      world_rules: ['写实年代背景，不存在超自然能力或弹窗系统'],
+      key_terms: ['深山', '打猎', '生产队', '供销社', '猎枪', '野物', '口粮'],
+      style_tags: ['写实', '生存细节', '家庭温情', '爽点兑现'],
+      style_samples: meta?.style_samples ?? [],
+      summary: meta?.summary ?? '',
+    }
+  }
+  return meta
+}
 
 export function buildGetOutlineContextTool(novelId: string): ToolDefinition {
   return {
     name: 'getOutlineContext',
     label: '获取写大纲 context 包',
     description:
-      '一次性返回写本章大纲所需的全部 function-level 信息：source 章的 plot_functions / key_events[].function+can_replace+can_reorder+depends_on（**不含 desc / summary**，避免抄载体）/ originality_risks / 涉及的 subplots / maps / state / meta（题材锚点）/ source_characters / 邻近章节的 outline。**写大纲前必须先调一次。**',
+      '一次性返回写本章大纲所需的全部安全信息：source 章的 dramatic_beat_blueprint（戏剧节拍蓝图）/ plot_functions / key_events[].function+can_replace+can_reorder+depends_on（**不含 desc / summary**，避免抄载体）/ similarity_signals / 涉及的 subplots / maps / state / meta（题材锚点）/ source_characters / 邻近章节的 outline。**写大纲前必须先调一次。**',
     promptSnippet: 'getOutlineContext({number}) - 写大纲前必先调',
     promptGuidelines: [
       '写**每一章**大纲前都要调一次',
       '**严禁并行调用 / 一次只调一章**：写多章时按 getOutlineContext(N) → writeChapterOutline(N) → getOutlineContext(N+1) 串行循环。一次 batch 10+ 章会让返回结果累计 50K+ token 撑爆 context，provider 静默失败',
       '返回的 source.plot_functions 是本章必须实现的剧情功能列表——你的 outline.plot_functions 直接抄过去',
-      '返回的 source.key_events[].function 是每个关键事件要实现的功能；你要为每个 function 设计一个**新载体**（new_carrier），载体不得与原书相似',
-      '返回的 source.originality_risks 是必须主动避开的标志性桥段载体',
+      '返回的 source.dramatic_beat_blueprint 是本章真正要参考的中间层：按状态变化、压力结构、信息差、情绪曲线、爽点兑现和章末承诺设计新剧情',
+      '返回的 source.key_events[].function 是每个关键事件要实现的功能；你要为每个 function 设计一个新载体（new_carrier），允许单个题材元素趋同，但不能复现原作整套事件组合',
+      '返回的 source.similarity_signals 是相似风险提示，不是禁用清单；允许题材内自然趋同，但不能把这些信号组合成和原作一比一相同的事件链',
       '返回的 meta.industry / era / genre_tags / world_rules / style_tags 是题材锚点——target_industry 默认要保持一致',
       '返回的 nearby_outlines 是邻近章节已写的大纲（前后各 3 章），用来保持新载体连贯、避免和邻章重复',
       '返回的 hook_ledger 是当前钩子账本：overdue=true 或 open_chapters 过长的钩子，需要优先安排阶段性兑现',
@@ -47,7 +80,7 @@ export function buildGetOutlineContextTool(novelId: string): ToolDefinition {
       const maps = await readMaps(novelId)
       const state = await readState(novelId)
       const sourceHooks = await readSourceHooks(novelId)
-      const meta = await readSourceMeta(novelId)
+      const meta = await buildEffectiveMeta(novelId)
       const allSubplots = await readSourceSubplots(novelId)
       const sourceCharacters = await listSourceCharacters(novelId)
 
@@ -124,6 +157,9 @@ export function buildGetOutlineContextTool(novelId: string): ToolDefinition {
             depends_on: e.depends_on,
           })),
           originality_risks: sourceChapter.originality_risks,
+          similarity_signals: sourceChapter.originality_risks,
+          dramatic_beat_blueprint: sourceChapter.dramatic_beat_blueprint,
+          writing_rhythm: sourceChapter.writing_rhythm,
         },
         meta: meta
           ? {

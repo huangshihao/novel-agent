@@ -127,6 +127,7 @@ app.get('/:id/chapters', async (c) => {
       summary: ch.summary,
       plot_functions: ch.plot_functions,
       originality_risks: ch.originality_risks,
+      dramatic_beat_blueprint: ch.dramatic_beat_blueprint,
     })),
   )
 })
@@ -151,6 +152,7 @@ app.get('/:id/chapters/:n', async (c) => {
     key_events: ch.key_events,
     originality_risks: ch.originality_risks,
     writing_rhythm: ch.writing_rhythm,
+    dramatic_beat_blueprint: ch.dramatic_beat_blueprint,
   })
 })
 

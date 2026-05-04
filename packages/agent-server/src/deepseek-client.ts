@@ -20,14 +20,19 @@ export class DeepSeekError extends Error {
   }
 }
 
-interface ChatOptions {
+export interface ChatOptions {
   temperature?: number
   top_p?: number
   jsonMode?: boolean
 }
 
+export interface ChatJsonClient {
+  chat(prompt: string, opts?: ChatOptions): Promise<string>
+  chatJson<T = unknown>(prompt: string, opts?: Omit<ChatOptions, 'jsonMode'>): Promise<T>
+}
+
 /** Low-level chat/completions 调用，成功返回 message.content 字符串。 */
-export class DeepSeekClient {
+export class DeepSeekClient implements ChatJsonClient {
   private readonly apiKey: string
   private readonly model: string
   private readonly baseUrl: string

@@ -31,6 +31,7 @@ export async function writeOutline(novelId: string, rec: OutlineRecord): Promise
     hooks_to_payoff: rec.hooks_to_payoff,
     hook_plans: rec.hook_plans ?? [],
     retention_plan: rec.retention_plan ?? null,
+    reader_experience_plan: rec.reader_experience_plan ?? null,
     golden_three_plan: rec.golden_three_plan ?? null,
     planned_state_changes: rec.planned_state_changes,
     referenced_characters: rec.referenced_characters,

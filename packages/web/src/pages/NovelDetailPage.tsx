@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type {
   CharacterStoryFunction,
+  DramaticBeatBlueprint,
   HookCategory,
   Replaceability,
   WritingRhythm,
@@ -282,6 +283,11 @@ function ChaptersTab({ novelId }: { novelId: string }) {
                     ))}
                   </div>
                 )}
+                {c.dramatic_beat_blueprint?.beat_function && (
+                  <p className="mt-2 text-xs text-neutral-600">
+                    戏剧节拍：{c.dramatic_beat_blueprint.beat_function}
+                  </p>
+                )}
                 {c.summary ? (
                   <p className="text-neutral-700 mt-2 leading-relaxed">{c.summary}</p>
                 ) : (
@@ -289,7 +295,7 @@ function ChaptersTab({ novelId }: { novelId: string }) {
                 )}
                 {(c.originality_risks?.length ?? 0) > 0 && (
                   <div className="mt-2 text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded px-2 py-1.5">
-                    <span className="font-medium">⚠ 标志性桥段（改写避开）：</span>
+                    <span className="font-medium">相似风险提示：</span>
                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                       {c.originality_risks!.map((r, i) => (
                         <li key={i}>{r}</li>
@@ -370,8 +376,56 @@ function ChapterDetail({ novelId, number }: { novelId: string; number: number })
           </ul>
         </section>
       )}
+      {data.dramatic_beat_blueprint && (
+        <DramaticBeatBlueprintView blueprint={data.dramatic_beat_blueprint} />
+      )}
       {data.writing_rhythm && <WritingRhythmView rhythm={data.writing_rhythm} />}
     </div>
+  )
+}
+
+function DramaticBeatBlueprintView({ blueprint }: { blueprint: DramaticBeatBlueprint }) {
+  const rawRows: Array<[string, string]> = [
+    ['章节功能', blueprint.beat_function],
+    ['状态变化', `${blueprint.state_before} -> ${blueprint.state_after}`],
+    ['压力结构', blueprint.pressure_pattern],
+    ['冲突引擎', blueprint.conflict_engine],
+    ['读者期待', blueprint.reader_expectation],
+    ['转折点', blueprint.reversal_point],
+    ['资源/地位变化', blueprint.resource_or_status_change],
+    ['信息差', blueprint.information_gap],
+    ['情绪曲线', blueprint.emotional_curve],
+    ['章末承诺', blueprint.hook_promise],
+  ]
+  const rows = rawRows.filter(([, value]) => value.trim().length > 0)
+  return (
+    <section>
+      <h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1.5">
+        戏剧节拍蓝图
+      </h4>
+      <div className="rounded border border-indigo-100 bg-indigo-50/50 p-2 text-xs">
+        {blueprint.payoff_type.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1">
+            {blueprint.payoff_type.map((type, i) => (
+              <span key={i} className="rounded bg-white px-1.5 py-0.5 text-indigo-700">
+                {type}
+              </span>
+            ))}
+            <span className="rounded bg-white px-1.5 py-0.5 text-neutral-600">
+              强度 {blueprint.intensity}/5
+            </span>
+          </div>
+        )}
+        <dl className="space-y-1.5">
+          {rows.map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-neutral-500">{label}</dt>
+              <dd className="text-neutral-800">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
   )
 }
 

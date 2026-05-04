@@ -46,6 +46,21 @@ describe('buildGetChapterContextTool', () => {
       plot_functions: ['建立压力'],
       originality_risks: ['原书标志桥段'],
       writing_rhythm: null,
+      dramatic_beat_blueprint: {
+        beat_function: '建立主角开篇压力',
+        state_before: '主角还没有行动空间',
+        state_after: '主角被迫做出选择',
+        pressure_pattern: '压力降临 -> 选择收窄 -> 行动被迫开始',
+        conflict_engine: '生存',
+        reader_expectation: '期待主角破局',
+        payoff_type: ['危机逼近'],
+        reversal_point: '主角发现旧办法不可行',
+        resource_or_status_change: '失去安稳状态',
+        information_gap: '主角意识到风险，旁人还没意识到',
+        emotional_curve: '不安 -> 紧张',
+        hook_promise: '下一章会出现第一次破局动作',
+        intensity: 4,
+      },
     })
     await writeSourceMeta(novelId, {
       title: '原书',
@@ -100,5 +115,13 @@ describe('buildGetChapterContextTool', () => {
     expect(json).not.toContain('这是一段原文风格样本')
     expect(json).not.toContain('原书角色具体经历')
     expect(r.details.style_tags).toEqual(['短句'])
+    expect(r.details.source).toMatchObject({
+      similarity_signals: ['原书标志桥段'],
+      dramatic_beat_blueprint: {
+        beat_function: '建立主角开篇压力',
+        payoff_type: ['危机逼近'],
+      },
+    })
+    expect(JSON.stringify(r.details.source)).not.toContain('forbidden_signatures')
   })
 })

@@ -47,6 +47,14 @@ function baseOutline(number: number, refs: string[]): OutlineRecord {
       reader_expectation: '读者想看主角如何处理新问题',
       retention_risk: '无',
     },
+    reader_experience_plan: {
+      satisfaction_type: '小资源兑现',
+      tension_source: '工具不足且时间紧',
+      victory_cost: '主角消耗体力并欠下人情',
+      scene_mechanism: '用简陋工具设计可视化反制过程',
+      payoff_visibility: '读者能看到资源到手和家人反馈',
+      originality_strategy: '保留求生压力和小胜节奏，换掉具体动物、道具和动作组合',
+    },
     golden_three_plan:
       number <= 3
         ? {
@@ -184,6 +192,30 @@ describe('buildWriteChapterOutlineTool', () => {
 
     expect(r.details.ok).toBe(false)
     expect(r.details.issues?.some((s) => s.includes('hook_plans') && s.includes('nhk-001'))).toBe(true)
+  })
+
+  it('requires concrete reader experience mechanics', async () => {
+    await writeMaps(novelId, {
+      character_map: [
+        { source: '主角原名', target: '陈峰', source_meta: null, target_note: null },
+      ],
+      setting_map: null,
+    })
+    const outline = baseOutline(4, ['陈峰'])
+    outline.reader_experience_plan = {
+      satisfaction_type: '',
+      tension_source: '工具不足且时间紧',
+      victory_cost: '主角消耗体力',
+      scene_mechanism: '',
+      payoff_visibility: '读者能看到资源到手',
+      originality_strategy: '换掉具体动物和道具',
+    }
+
+    const r = await exec({ from: 1, to: 10 }, outline)
+
+    expect(r.details.ok).toBe(false)
+    expect(r.details.issues?.some((s) => s.includes('reader_experience_plan.satisfaction_type'))).toBe(true)
+    expect(r.details.issues?.some((s) => s.includes('reader_experience_plan.scene_mechanism'))).toBe(true)
   })
 
   it('accepts source hook categories in hook_plans schema', () => {

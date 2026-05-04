@@ -4,6 +4,7 @@ import { writeChapterInternal } from './chapter-internal-store.js'
 import type {
   CharacterRole,
   CharacterStoryFunction,
+  DramaticBeatBlueprint,
   KeyEventEntry,
   Replaceability,
   SubplotFunction,
@@ -13,6 +14,7 @@ import type {
 export type {
   CharacterRole,
   CharacterStoryFunction,
+  DramaticBeatBlueprint,
   KeyEventEntry,
   Replaceability,
   SubplotFunction,
@@ -44,6 +46,7 @@ export interface SourceChapterRecord {
   plot_functions: string[]
   originality_risks: string[]
   writing_rhythm: WritingRhythm | null
+  dramatic_beat_blueprint?: DramaticBeatBlueprint | null
 }
 
 export interface SourceCharacterRecord {
@@ -118,6 +121,7 @@ export async function writeSourceChapter(
     key_events: keyEventsForMd,
     originality_risks: rec.originality_risks,
     writing_rhythm: rec.writing_rhythm,
+    dramatic_beat_blueprint: rec.dramatic_beat_blueprint ?? null,
   }
   await writeMd(paths.sourceChapter(novelId, rec.number), fm, '')
   writeChapterInternal(novelId, rec.number, rec.summary, rec.key_events)

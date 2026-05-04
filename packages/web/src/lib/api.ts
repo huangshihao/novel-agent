@@ -13,7 +13,14 @@ import type {
 
 export type ChapterListItem = Pick<
   Chapter,
-  'id' | 'novel_id' | 'number' | 'title' | 'summary' | 'plot_functions' | 'originality_risks'
+  | 'id'
+  | 'novel_id'
+  | 'number'
+  | 'title'
+  | 'summary'
+  | 'plot_functions'
+  | 'originality_risks'
+  | 'dramatic_beat_blueprint'
 >
 
 async function j<T>(r: Response): Promise<T> {

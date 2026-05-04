@@ -2,7 +2,7 @@ import { rm } from 'node:fs/promises'
 import { listFrontMatter, readMd, readMdIfExists } from './markdown.js'
 import { paths } from './paths.js'
 import { listChapterInternal, readChapterInternal } from './chapter-internal-store.js'
-import type { KeyEventEntry, WritingRhythm } from '@novel-agent/shared'
+import type { DramaticBeatBlueprint, KeyEventEntry, WritingRhythm } from '@novel-agent/shared'
 import type {
   SourceChapterRecord,
   SourceCharacterRecord,
@@ -22,6 +22,7 @@ interface ChapterFrontMatter {
   key_events?: (Partial<KeyEventEntry> & { desc?: string })[] | string[]
   originality_risks?: string[]
   writing_rhythm?: WritingRhythm | null
+  dramatic_beat_blueprint?: DramaticBeatBlueprint | null
 }
 
 // MD 已不含 desc — 读出来填空串；如果是旧文件含 desc 则保留作向后兼容（migrate 之前）
@@ -43,6 +44,30 @@ function normalizeKeyEventsFromMd(
   })
 }
 
+function normalizeDramaticBeatBlueprint(raw: unknown): DramaticBeatBlueprint | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const payoffType = Array.isArray(r['payoff_type'])
+    ? r['payoff_type'].map((s) => String(s).trim()).filter(Boolean)
+    : []
+  const intensity = Number(r['intensity'])
+  return {
+    beat_function: String(r['beat_function'] ?? '').trim(),
+    state_before: String(r['state_before'] ?? '').trim(),
+    state_after: String(r['state_after'] ?? '').trim(),
+    pressure_pattern: String(r['pressure_pattern'] ?? '').trim(),
+    conflict_engine: String(r['conflict_engine'] ?? '').trim(),
+    reader_expectation: String(r['reader_expectation'] ?? '').trim(),
+    payoff_type: payoffType,
+    reversal_point: String(r['reversal_point'] ?? '').trim(),
+    resource_or_status_change: String(r['resource_or_status_change'] ?? '').trim(),
+    information_gap: String(r['information_gap'] ?? '').trim(),
+    emotional_curve: String(r['emotional_curve'] ?? '').trim(),
+    hook_promise: String(r['hook_promise'] ?? '').trim(),
+    intensity: Number.isFinite(intensity) ? Math.min(5, Math.max(1, Math.round(intensity))) : 1,
+  }
+}
+
 export async function readSourceChapter(
   novelId: string,
   number: number,
@@ -61,6 +86,7 @@ export async function readSourceChapter(
     plot_functions: md.frontMatter.plot_functions ?? [],
     originality_risks: md.frontMatter.originality_risks ?? [],
     writing_rhythm: md.frontMatter.writing_rhythm ?? null,
+    dramatic_beat_blueprint: normalizeDramaticBeatBlueprint(md.frontMatter.dramatic_beat_blueprint),
   }
 }
 
@@ -90,6 +116,7 @@ export async function readSourceChapterFull(
     plot_functions: md.frontMatter.plot_functions ?? [],
     originality_risks: md.frontMatter.originality_risks ?? [],
     writing_rhythm: md.frontMatter.writing_rhythm ?? null,
+    dramatic_beat_blueprint: normalizeDramaticBeatBlueprint(md.frontMatter.dramatic_beat_blueprint),
   }
 }
 
@@ -111,6 +138,7 @@ export async function listSourceChapters(
       plot_functions: item.frontMatter.plot_functions ?? [],
       originality_risks: item.frontMatter.originality_risks ?? [],
       writing_rhythm: item.frontMatter.writing_rhythm ?? null,
+      dramatic_beat_blueprint: normalizeDramaticBeatBlueprint(item.frontMatter.dramatic_beat_blueprint),
     })
   }
   return out.sort((a, b) => a.number - b.number)
@@ -142,6 +170,7 @@ export async function listSourceChaptersFull(
       plot_functions: item.frontMatter.plot_functions ?? [],
       originality_risks: item.frontMatter.originality_risks ?? [],
       writing_rhythm: item.frontMatter.writing_rhythm ?? null,
+      dramatic_beat_blueprint: normalizeDramaticBeatBlueprint(item.frontMatter.dramatic_beat_blueprint),
     })
   }
   return out.sort((a, b) => a.number - b.number)

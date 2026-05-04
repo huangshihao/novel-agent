@@ -32,6 +32,7 @@ export interface Chapter {
   key_events?: KeyEventEntry[]
   originality_risks?: string[]
   writing_rhythm?: WritingRhythm | null
+  dramatic_beat_blueprint?: DramaticBeatBlueprint | null
 }
 
 // 每个关键事件的功能化标签 — 改写时按 function 重做载体而不是抄 desc
@@ -83,6 +84,22 @@ export interface WritingRhythm {
     beat_sequence: string[]
     core_rhythm: string
   }
+}
+
+export interface DramaticBeatBlueprint {
+  beat_function: string
+  state_before: string
+  state_after: string
+  pressure_pattern: string
+  conflict_engine: string
+  reader_expectation: string
+  payoff_type: string[]
+  reversal_point: string
+  resource_or_status_change: string
+  information_gap: string
+  emotional_curve: string
+  hook_promise: string
+  intensity: number
 }
 
 export type CharacterRole =
@@ -291,6 +308,15 @@ export interface ChapterRetentionPlan {
   retention_risk: string
 }
 
+export interface ReaderExperiencePlan {
+  satisfaction_type: string
+  tension_source: string
+  victory_cost: string
+  scene_mechanism: string
+  payoff_visibility: string
+  originality_strategy: string
+}
+
 export interface HookPlan {
   id: string
   type: RetentionHookType
@@ -313,6 +339,7 @@ export interface OutlineRecord {
   key_events: OutlineKeyEvent[]
   referenced_characters: string[]
   retention_plan?: ChapterRetentionPlan | null
+  reader_experience_plan?: ReaderExperiencePlan | null
   golden_three_plan?: GoldenThreePlan | null
   hook_plans?: HookPlan[]
 }

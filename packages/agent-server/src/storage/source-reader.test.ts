@@ -33,6 +33,7 @@ const blankChapter = {
   plot_functions: [] as string[],
   originality_risks: [] as string[],
   writing_rhythm: null,
+  dramatic_beat_blueprint: null,
 }
 
 const blankCharacter = {
@@ -66,11 +67,28 @@ describe('source-reader', () => {
         { desc: 'e1', function: 'f1', can_replace: true, can_reorder: false, depends_on: [] },
         { desc: 'e2', function: 'f2', can_replace: true, can_reorder: false, depends_on: [] },
       ],
+      dramatic_beat_blueprint: {
+        beat_function: '推动主角第一次获得外部机会',
+        state_before: '主角缺少资源',
+        state_after: '主角拿到机会',
+        pressure_pattern: '缺资源 -> 被阻拦 -> 找到突破口',
+        conflict_engine: '资源',
+        reader_expectation: '期待主角拿到机会',
+        payoff_type: ['获得信任'],
+        reversal_point: '阻拦者误判主角能力',
+        resource_or_status_change: '机会增加',
+        information_gap: '主角理解机会价值，旁人误判',
+        emotional_curve: '焦灼 -> 松动',
+        hook_promise: '机会背后还有新风险',
+        intensity: 2,
+      },
     })
     const ch = await readSourceChapter('nv-1', 3)
     expect(ch?.summary).toBe('')
     expect(ch?.key_events.map((e) => e.desc)).toEqual(['', ''])
     expect(ch?.key_events.map((e) => e.function)).toEqual(['f1', 'f2'])
+    expect(ch?.dramatic_beat_blueprint?.beat_function).toBe('推动主角第一次获得外部机会')
+    expect(ch?.dramatic_beat_blueprint?.payoff_type).toEqual(['获得信任'])
     expect(ch?.characters_present).toEqual(['张三'])
     expect(ch?.hooks_planted_candidates).toEqual([{ desc: 'cand', category: 'secret' }])
   })
