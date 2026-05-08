@@ -1,4 +1,4 @@
-import { useState, useRef, type KeyboardEvent } from 'react'
+import { useEffect, useState, useRef, type KeyboardEvent } from 'react'
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
@@ -22,6 +22,7 @@ import {
 interface Props {
   novelId: string
   chatId: string | null
+  externalMessage?: { id: number; text: string } | null
   onChatCreated?: (chatId: string) => void
 }
 
@@ -124,7 +125,7 @@ function AssistantMessage() {
   )
 }
 
-export function ChatPanel({ novelId, chatId, onChatCreated }: Props) {
+export function ChatPanel({ novelId, chatId, externalMessage, onChatCreated }: Props) {
   const { runtime, send, cancel, isRunning } = useChatRuntime({
     novelId,
     chatId,
@@ -132,6 +133,15 @@ export function ChatPanel({ novelId, chatId, onChatCreated }: Props) {
   })
   const [draft, setDraft] = useState('')
   const composingRef = useRef(false)
+  const lastExternalMessageIdRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!externalMessage) return
+    if (lastExternalMessageIdRef.current === externalMessage.id) return
+    if (isRunning) return
+    lastExternalMessageIdRef.current = externalMessage.id
+    void send(externalMessage.text)
+  }, [externalMessage, isRunning, send])
 
   const submit = () => {
     const text = draft.trim()

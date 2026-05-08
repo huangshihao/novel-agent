@@ -344,6 +344,20 @@ export interface OutlineRecord {
   hook_plans?: HookPlan[]
 }
 
+export interface OutlineEvaluationRequest {
+  from: number
+  to: number
+}
+
+export interface OutlineEvaluationResponse {
+  from: number
+  to: number
+  model: string
+  report: string
+  suggestionMessage: string
+  evaluatedAt: string
+}
+
 export interface ChapterDraftRecord {
   number: number
   title: string

@@ -25,6 +25,10 @@ import {
   readMaps,
   readOutline,
 } from '../storage/target-reader.js'
+import {
+  evaluateOutlines,
+  validateOutlineEvaluationRange,
+} from '../outline-evaluator.js'
 import { deleteDraftsFrom, deleteOutlinesFrom } from '../storage/target-delete.js'
 import { readState } from '../storage/state.js'
 import { paths } from '../storage/paths.js'
@@ -253,6 +257,31 @@ app.get('/:id/maps', async (c) => c.json(await readMaps(c.req.param('id'))))
 app.get('/:id/state', async (c) => c.json(await readState(c.req.param('id'))))
 
 app.get('/:id/outlines', async (c) => c.json(await listOutlines(c.req.param('id'))))
+
+app.post('/:id/outlines/evaluate', async (c) => {
+  const id = c.req.param('id')
+  const novel = await readNovelIndex(id)
+  if (!novel) return c.json({ error: 'not_found' }, 404)
+
+  const body: { from?: number; to?: number } = await c.req
+    .json<{ from?: number; to?: number }>()
+    .catch(() => ({}))
+  const from = Number(body.from)
+  const to = Number(body.to)
+  const outlines = await listOutlines(id)
+  const checked = validateOutlineEvaluationRange(from, to, outlines)
+  if (!checked.ok) {
+    return c.json({ error: 'invalid_range', message: checked.message }, 400)
+  }
+
+  const result = await evaluateOutlines({
+    novelTitle: novel.title,
+    from,
+    to,
+    outlines: checked.selected,
+  })
+  return c.json(result)
+})
 
 app.get('/:id/outlines/:n', async (c) => {
   const o = await readOutline(c.req.param('id'), Number(c.req.param('n')))

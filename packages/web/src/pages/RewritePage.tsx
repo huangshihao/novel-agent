@@ -17,6 +17,7 @@ export function RewritePage() {
   })
 
   const [chatId, setChatId] = useState<string | null>(null)
+  const [agentMessage, setAgentMessage] = useState<{ id: number; text: string } | null>(null)
 
   useEffect(() => {
     if (chatId) return
@@ -51,6 +52,7 @@ export function RewritePage() {
           <ChatPanel
             novelId={id}
             chatId={chatId}
+            externalMessage={agentMessage}
             onChatCreated={(newId) => {
               setChatId(newId)
               qc.invalidateQueries({ queryKey: ['chats', id] })
@@ -58,7 +60,10 @@ export function RewritePage() {
           />
         </div>
         <div className="min-w-[600px] flex-1 bg-[rgba(244,246,242,0.62)]">
-          <ArtifactTabs novelId={id} />
+          <ArtifactTabs
+            novelId={id}
+            onSendToAgent={(text) => setAgentMessage({ id: Date.now(), text })}
+          />
         </div>
       </div>
     </div>

@@ -46,3 +46,26 @@ export function buildSharedLlmClient(): DeepSeekClient {
     baseUrl: process.env['AGENT_BASE_URL'] || process.env['DEEPSEEK_BASE_URL'] || 'https://qianfan.baidubce.com/v2/coding',
   })
 }
+
+export function buildOutlineEvaluatorLlmClient(): { client: DeepSeekClient; model: string } {
+  const apiKey =
+    process.env['OUTLINE_EVAL_API_KEY'] ||
+    process.env['AGENT_API_KEY'] ||
+    process.env['DEEPSEEK_API_KEY']
+  if (!apiKey) {
+    throw new Error('OUTLINE_EVAL_API_KEY, AGENT_API_KEY or DEEPSEEK_API_KEY is required')
+  }
+  const model = process.env['OUTLINE_EVAL_MODEL'] || 'gpt-5.5-high'
+  return {
+    model,
+    client: new DeepSeekClient({
+      apiKey,
+      model,
+      baseUrl:
+        process.env['OUTLINE_EVAL_BASE_URL'] ||
+        process.env['AGENT_BASE_URL'] ||
+        process.env['DEEPSEEK_BASE_URL'] ||
+        'https://qianfan.baidubce.com/v2/coding',
+    }),
+  }
+}

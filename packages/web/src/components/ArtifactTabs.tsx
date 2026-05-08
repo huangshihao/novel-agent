@@ -9,6 +9,7 @@ type Tab = 'maps' | 'outlines' | 'drafts' | 'state'
 
 interface Props {
   novelId: string
+  onSendToAgent?: (message: string) => void
 }
 
 const TABS: [Tab, string][] = [
@@ -18,7 +19,7 @@ const TABS: [Tab, string][] = [
   ['state', 'state'],
 ]
 
-export function ArtifactTabs({ novelId }: Props) {
+export function ArtifactTabs({ novelId, onSendToAgent }: Props) {
   const [tab, setTab] = useState<Tab>('maps')
   return (
     <div className="flex flex-col h-full">
@@ -40,7 +41,9 @@ export function ArtifactTabs({ novelId }: Props) {
       </nav>
       <div className="flex-1 overflow-hidden">
         {tab === 'maps' && <MapsPanel novelId={novelId} />}
-        {tab === 'outlines' && <OutlinePanel novelId={novelId} />}
+        {tab === 'outlines' && (
+          <OutlinePanel novelId={novelId} onSendToAgent={onSendToAgent} />
+        )}
         {tab === 'drafts' && <DraftsPanel novelId={novelId} />}
         {tab === 'state' && <StatePanel novelId={novelId} />}
       </div>

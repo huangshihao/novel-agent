@@ -6,6 +6,7 @@ import type {
   Hook,
   MapsRecord,
   OutlineRecord,
+  OutlineEvaluationResponse,
   ChapterDraftRecord,
   ChapterDraftSummary,
   StateRecord,
@@ -75,6 +76,12 @@ export const api = {
     fetch(`/api/novel/${id}/outlines`).then(j<OutlineRecord[]>),
   getOutline: (id: string, n: number) =>
     fetch(`/api/novel/${id}/outlines/${n}`).then(j<OutlineRecord>),
+  evaluateOutlines: (id: string, from: number, to: number) =>
+    fetch(`/api/novel/${id}/outlines/evaluate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to }),
+    }).then(j<OutlineEvaluationResponse>),
   deleteOutlinesFrom: (id: string, n: number) =>
     fetch(`/api/novel/${id}/outlines/${n}`, { method: 'DELETE' }).then(
       j<{ deletedOutlines: number[]; deletedDrafts: number[] }>,
