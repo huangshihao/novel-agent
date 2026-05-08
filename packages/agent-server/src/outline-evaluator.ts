@@ -54,20 +54,14 @@ export function buildOutlineEvaluationPrompt(input: OutlineEvaluationPromptInput
   const outlineText = input.outlines
     .map((outline) => formatOutlineForPrompt(outline))
     .join('\n\n')
+  const standards = buildEvaluationStandards(input.from, input.to)
 
   return `你是番茄小说资深网文编辑，按番茄小说商业连载标准评估用户生成的新书大纲。
 
 评估对象：《${input.novelTitle}》第 ${input.from}-${input.to} 章大纲。
 
 评估标准：
-1. 黄金三章：主角出场速度、强处境、首个小爽点、主线锁定和长线追读理由。
-2. 留存节奏：开头承接、章内目标、新阻碍、中段转折、小兑现、章末具体钩子。
-3. 爽点密度：每章是否有可视化 payoff，是否 3-5 章形成一次中型情绪兑现。
-4. 主线与升级：阶段目标是否明确，资源、身份、关系、能力或认知升级是否有成本。
-5. 人物驱动力：主角欲望是否具体，反派/阻力是否持续施压，配角是否有故事功能。
-6. 矛盾设计：冲突是否外化、连续、能推动下一章，避免只靠误会、巧合和作者解释。
-7. 番茄读感：开篇快、句意直接、情绪明确、期待清楚，适合移动端连载追读。
-8. 原创改写：不只做名词替换，避免事件链、人物关系、解决方式和章末钩子成套复刻。
+${standards}
 
 输出要求：
 - 用中文输出 Markdown。
@@ -78,6 +72,47 @@ export function buildOutlineEvaluationPrompt(input: OutlineEvaluationPromptInput
 
 待评估大纲：
 ${outlineText}`
+}
+
+function buildEvaluationStandards(from: number, to: number): string {
+  const includesOpening = from <= 3
+  const hasLaterChapters = to > 3
+  if (includesOpening && !hasLaterChapters) return openingStandards()
+  if (!includesOpening) return serialStageStandards()
+  return mixedRangeStandards()
+}
+
+function openingStandards(): string {
+  return `1. 黄金三章标准：第 1 章看主角出场速度、强处境和不可逆变化；第 2 章看首个小爽点兑现和代价；第 3 章看主线锁定、长期问题和追读理由。
+2. 留存节奏：开头承接、章内目标、新阻碍、中段转折、小兑现、章末具体钩子。
+3. 爽点密度：每章是否有可视化 payoff，是否能建立清晰读者契约。
+4. 主线与升级：阶段目标是否明确，资源、身份、关系、能力或认知升级是否有成本。
+5. 人物驱动力：主角欲望是否具体，反派/阻力是否持续施压，配角是否有故事功能。
+6. 矛盾设计：冲突是否外化、连续、能推动下一章，避免只靠误会、巧合和作者解释。
+7. 番茄读感：开篇快、句意直接、情绪明确、期待清楚，适合移动端连载追读。
+8. 原创改写：不只做名词替换，避免事件链、人物关系、解决方式和章末钩子成套复刻。`
+}
+
+function serialStageStandards(): string {
+  return `1. 阶段连载标准：只按当前章节所在阶段评估，不套用黄金三章的主角出场、首个小爽点和主线锁定要求。
+2. 阶段目标：阶段目标是否明确，当前 3-5 章的小目标是否可判断成败。
+3. 留存节奏：每章是否承接上一章钩子，制造新阻碍，兑现一个小期待，并留下更具体的新期待。
+4. 爽点与升级：资源、身份、关系、能力或认知升级是否有成本，payoff 是否可视化。
+5. 压力递进：反派、环境、规则或关系压力是否持续升级，是否避免中段松散和重复过关。
+6. 伏笔账本：已埋伏笔是否有阶段性推进，新增伏笔是否有预计兑现方式，避免只埋不收。
+7. 疲劳点：检查连续章节是否重复同一种冲突、同一种爽点或同一种章末钩子。
+8. 原创改写：不只做名词替换，避免事件链、人物关系、解决方式和章末钩子成套复刻。`
+}
+
+function mixedRangeStandards(): string {
+  return `1. 分段评估：第 1-3 章适用黄金三章标准；第 4 章及之后适用阶段连载标准，不要把开篇要求套到后续章节。
+2. 黄金三章标准：第 1 章看主角出场速度、强处境和不可逆变化；第 2 章看首个小爽点兑现和代价；第 3 章看主线锁定、长期问题和追读理由。
+3. 阶段连载标准：第 4 章及之后看阶段目标、压力递进、升级成本、伏笔推进和中型情绪兑现。
+4. 留存节奏：每章是否承接上一章钩子，制造新阻碍，兑现一个小期待，并留下更具体的新期待。
+5. 爽点密度：每章是否有可视化 payoff，是否 3-5 章形成一次中型情绪兑现。
+6. 人物驱动力：主角欲望是否具体，反派/阻力是否持续施压，配角是否有故事功能。
+7. 番茄读感：句意直接、情绪明确、期待清楚，适合移动端连载追读。
+8. 原创改写：不只做名词替换，避免事件链、人物关系、解决方式和章末钩子成套复刻。`
 }
 
 export async function evaluateOutlinesWithClient(

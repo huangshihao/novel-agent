@@ -49,4 +49,17 @@ describe('outline evaluator', () => {
     expect(prompt).toContain('第 2 章新大纲剧情')
     expect(prompt).toContain('第 3 章新大纲剧情')
   })
+
+  it('评估中段章节时不套用黄金三章标准', () => {
+    const prompt = buildOutlineEvaluationPrompt({
+      novelTitle: '测试小说',
+      from: 11,
+      to: 20,
+      outlines: Array.from({ length: 10 }, (_, i) => outline(i + 11)),
+    })
+
+    expect(prompt).not.toContain('黄金三章：主角出场速度')
+    expect(prompt).toContain('阶段连载标准')
+    expect(prompt).toContain('阶段目标是否明确')
+  })
 })
