@@ -9,7 +9,6 @@ interface Props {
   onSendToAgent?: (message: string) => void
 }
 
-const DEFAULT_EVALUATION_SPAN = 10
 const MAX_EVALUATION_SPAN = 20
 
 function TrashIcon() {
@@ -38,15 +37,15 @@ export function OutlinePanel({ novelId, onSendToAgent }: Props) {
     () => (outlines ?? []).map((outline) => outline.number).sort((a, b) => a - b),
     [outlines],
   )
-  const outlineNumbersKey = outlineNumbers.join(',')
   const [selectedEvaluationNumbers, setSelectedEvaluationNumbers] = useState<number[]>([])
   const [sentMessageId, setSentMessageId] = useState<string | null>(null)
   const [editableReport, setEditableReport] = useState('')
 
   useEffect(() => {
-    if (outlineNumbers.length === 0) return
-    setSelectedEvaluationNumbers(outlineNumbers.slice(0, DEFAULT_EVALUATION_SPAN))
-  }, [outlineNumbersKey])
+    setSelectedEvaluationNumbers((prev) =>
+      prev.filter((number) => outlineNumbers.includes(number)),
+    )
+  }, [outlineNumbers])
 
   const deleteMut = useMutation({
     mutationFn: (number: number) => api.deleteOutlinesFrom(novelId, number),
