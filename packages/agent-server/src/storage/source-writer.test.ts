@@ -37,11 +37,32 @@ describe('source-writer', () => {
       plot_functions: ['主角优势首秀'],
       originality_risks: [],
       writing_rhythm: null,
+      dramatic_beat_blueprint: {
+        beat_function: '第一次展示主角优势机制',
+        state_before: '主角被轻视且缺少可信资源',
+        state_after: '主角获得初步认可',
+        pressure_pattern: '质疑出现 -> 压力加重 -> 判断兑现',
+        conflict_engine: '身份与资源',
+        reader_expectation: '读者期待主角证明自己',
+        payoff_type: ['信息差兑现'],
+        reversal_point: '外界误判被结果推翻',
+        resource_or_status_change: '获得初步信用',
+        information_gap: '主角知道关键判断依据，旁人不知道',
+        emotional_curve: '压抑 -> 紧张 -> 爽感',
+        hook_promise: '更大压力即将出现',
+        intensity: 3,
+      },
     })
     const md = await readMd(paths.sourceChapter('nv-1', 5))
     expect(md.frontMatter['number']).toBe(5)
     expect(md.frontMatter['_hooks_planted_candidates']).toEqual([{ desc: 'foo', category: 'secret' }])
     expect(md.frontMatter['plot_functions']).toEqual(['主角优势首秀'])
+    expect(md.frontMatter['dramatic_beat_blueprint']).toMatchObject({
+      beat_function: '第一次展示主角优势机制',
+      state_before: '主角被轻视且缺少可信资源',
+      payoff_type: ['信息差兑现'],
+      intensity: 3,
+    })
     const events = md.frontMatter['key_events'] as Record<string, unknown>[]
     expect(events[0]?.['function']).toBe('主角优势暴露')
     expect(events[0]?.['desc']).toBeUndefined()

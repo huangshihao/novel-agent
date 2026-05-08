@@ -32,6 +32,7 @@ export interface Chapter {
   key_events?: KeyEventEntry[]
   originality_risks?: string[]
   writing_rhythm?: WritingRhythm | null
+  dramatic_beat_blueprint?: DramaticBeatBlueprint | null
 }
 
 // 每个关键事件的功能化标签 — 改写时按 function 重做载体而不是抄 desc
@@ -83,6 +84,22 @@ export interface WritingRhythm {
     beat_sequence: string[]
     core_rhythm: string
   }
+}
+
+export interface DramaticBeatBlueprint {
+  beat_function: string
+  state_before: string
+  state_after: string
+  pressure_pattern: string
+  conflict_engine: string
+  reader_expectation: string
+  payoff_type: string[]
+  reversal_point: string
+  resource_or_status_change: string
+  information_gap: string
+  emotional_curve: string
+  hook_promise: string
+  intensity: number
 }
 
 export type CharacterRole =
@@ -188,6 +205,7 @@ export type ActiveTask = { chatId: string } | null
 export type AgentEvent =
   | { type: 'message.delta'; content: string }
   | { type: 'message.complete'; content: string }
+  | { type: 'reasoning.delta'; content: string }
   | { type: 'tool.call'; id: string; name: string; params: unknown }
   | { type: 'tool.result'; id: string; name: string; result: unknown }
   | { type: 'done' }
@@ -237,6 +255,76 @@ export interface OutlineKeyEvent {
   new_carrier: string
 }
 
+export type RetentionHookType =
+  | 'suspense'
+  | 'crisis'
+  | 'payoff'
+  | 'goal'
+  | 'secret'
+  | 'relation'
+  | 'rule'
+  | 'contrast'
+  | 'emotion'
+  | 'information'
+  | 'identity'
+  | 'reward'
+  | 'punishment'
+  | 'reversal'
+
+export interface ReaderContract {
+  core_emotion: string
+  main_selling_point: string
+  protagonist_desire: string
+  main_conflict: string
+  long_term_question: string
+}
+
+export interface GoldenThreeDiagnosticScores {
+  protagonist_entry_speed: number
+  conflict_strength: number
+  empathy: number
+  mainline_clarity: number
+  payoff_clarity: number
+  ending_hook_strength: number
+  information_density: number
+  platform_fit: number
+}
+
+export interface GoldenThreePlan {
+  chapter_role: 'strong_situation' | 'first_payoff' | 'mainline_lock'
+  reader_contract: ReaderContract
+  diagnostic_scores: GoldenThreeDiagnosticScores
+}
+
+export interface ChapterRetentionPlan {
+  inherited_hook: string
+  chapter_goal: string
+  opening_hook: string
+  new_obstacle: string
+  midpoint_turn: string
+  payoff: string
+  ending_hook: string
+  reader_expectation: string
+  retention_risk: string
+}
+
+export interface ReaderExperiencePlan {
+  satisfaction_type: string
+  tension_source: string
+  victory_cost: string
+  scene_mechanism: string
+  payoff_visibility: string
+  originality_strategy: string
+}
+
+export interface HookPlan {
+  id: string
+  type: RetentionHookType
+  description: string
+  expected_payoff_chapter: number | null
+  payoff_plan: string
+}
+
 export interface OutlineRecord {
   number: number
   source_chapter_ref: number
@@ -250,6 +338,24 @@ export interface OutlineRecord {
   plot: string
   key_events: OutlineKeyEvent[]
   referenced_characters: string[]
+  retention_plan?: ChapterRetentionPlan | null
+  reader_experience_plan?: ReaderExperiencePlan | null
+  golden_three_plan?: GoldenThreePlan | null
+  hook_plans?: HookPlan[]
+}
+
+export interface OutlineEvaluationRequest {
+  from: number
+  to: number
+}
+
+export interface OutlineEvaluationResponse {
+  from: number
+  to: number
+  model: string
+  report: string
+  suggestionMessage: string
+  evaluatedAt: string
 }
 
 export interface ChapterDraftRecord {
@@ -271,9 +377,11 @@ export interface AliveStatus {
 
 export interface NewHook {
   id: string
+  type?: RetentionHookType | null
   description: string
   planted_chapter: number
   expected_payoff_chapter: number | null
+  payoff_plan?: string
   status: 'open' | 'paid_off'
   paid_chapter?: number
 }

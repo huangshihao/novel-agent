@@ -17,6 +17,12 @@ async function j<T>(r: Response): Promise<T> {
   return r.json() as Promise<T>
 }
 
+async function ok(r: Response): Promise<void> {
+  if (!r.ok) {
+    await j<never>(r)
+  }
+}
+
 export const chatApi = {
   getActive: (novelId: string) =>
     fetch(`/api/agent/${novelId}/active`).then(j<ActiveTask>),
@@ -44,10 +50,10 @@ export const chatApi = {
     }).then(j<ChatInfo>),
 
   delete: (novelId: string, chatId: string) =>
-    fetch(`/api/agent/${novelId}/chats/${chatId}`, { method: 'DELETE' }),
+    fetch(`/api/agent/${novelId}/chats/${chatId}`, { method: 'DELETE' }).then(ok),
 
   stop: (novelId: string, chatId: string) =>
-    fetch(`/api/agent/${novelId}/chats/${chatId}/stop`, { method: 'POST' }),
+    fetch(`/api/agent/${novelId}/chats/${chatId}/stop`, { method: 'POST' }).then(ok),
 
   messageUrl: (novelId: string, chatId: string) =>
     `/api/agent/${novelId}/chats/${chatId}/message`,

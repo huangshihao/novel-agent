@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import type { AnalysisEvent } from '@novel-agent/shared'
 import { splitChapters } from '../chapter-splitter.js'
 import { startAnalysis, reaggregate } from '../analyzer.js'
@@ -25,8 +25,14 @@ import {
   readMaps,
   readOutline,
 } from '../storage/target-reader.js'
+import {
+  evaluateOutlines,
+  validateOutlineEvaluationRange,
+} from '../outline-evaluator.js'
+import { deleteDraftsFrom, deleteOutlinesFrom } from '../storage/target-delete.js'
 import { readState } from '../storage/state.js'
 import { paths } from '../storage/paths.js'
+import { readChapterRaw, writeChapterRaw } from '../storage/chapter-internal-store.js'
 
 const app = new Hono()
 
@@ -89,9 +95,8 @@ app.post('/', async (c) => {
   const title = providedTitle || file.name.replace(/\.(txt|TXT)$/, '').trim() || '未命名小说'
   const now = Date.now()
 
-  await mkdir(paths.sourceRawDir(id), { recursive: true })
   for (const ch of chapters) {
-    await writeFile(paths.sourceRaw(id, ch.number), ch.content, 'utf8')
+    writeChapterRaw(id, ch.number, ch.content)
   }
 
   await writeNovelIndex({
@@ -126,6 +131,7 @@ app.get('/:id/chapters', async (c) => {
       summary: ch.summary,
       plot_functions: ch.plot_functions,
       originality_risks: ch.originality_risks,
+      dramatic_beat_blueprint: ch.dramatic_beat_blueprint,
     })),
   )
 })
@@ -138,7 +144,7 @@ app.get('/:id/chapters/:n', async (c) => {
   }
   const ch = await readSourceChapterFull(id, n)
   if (!ch) return c.json({ error: 'not_found' }, 404)
-  const raw = await readFile(paths.sourceRaw(id, n), 'utf8').catch(() => '')
+  const raw = readChapterRaw(id, n)
   return c.json({
     id: n,
     novel_id: id,
@@ -150,6 +156,7 @@ app.get('/:id/chapters/:n', async (c) => {
     key_events: ch.key_events,
     originality_risks: ch.originality_risks,
     writing_rhythm: ch.writing_rhythm,
+    dramatic_beat_blueprint: ch.dramatic_beat_blueprint,
   })
 })
 
@@ -251,9 +258,42 @@ app.get('/:id/state', async (c) => c.json(await readState(c.req.param('id'))))
 
 app.get('/:id/outlines', async (c) => c.json(await listOutlines(c.req.param('id'))))
 
+app.post('/:id/outlines/evaluate', async (c) => {
+  const id = c.req.param('id')
+  const novel = await readNovelIndex(id)
+  if (!novel) return c.json({ error: 'not_found' }, 404)
+
+  const body: { from?: number; to?: number } = await c.req
+    .json<{ from?: number; to?: number }>()
+    .catch(() => ({}))
+  const from = Number(body.from)
+  const to = Number(body.to)
+  const outlines = await listOutlines(id)
+  const checked = validateOutlineEvaluationRange(from, to, outlines)
+  if (!checked.ok) {
+    return c.json({ error: 'invalid_range', message: checked.message }, 400)
+  }
+
+  const result = await evaluateOutlines({
+    novelTitle: novel.title,
+    from,
+    to,
+    outlines: checked.selected,
+  })
+  return c.json(result)
+})
+
 app.get('/:id/outlines/:n', async (c) => {
   const o = await readOutline(c.req.param('id'), Number(c.req.param('n')))
   return o ? c.json(o) : c.json({ error: 'not_found' }, 404)
+})
+
+app.delete('/:id/outlines/:n', async (c) => {
+  const n = Number(c.req.param('n'))
+  if (!Number.isInteger(n) || n < 1) {
+    return c.json({ error: 'invalid_chapter' }, 400)
+  }
+  return c.json(await deleteOutlinesFrom(c.req.param('id'), n))
 })
 
 app.get('/:id/drafts', async (c) => {
@@ -264,6 +304,14 @@ app.get('/:id/drafts', async (c) => {
 app.get('/:id/drafts/:n', async (c) => {
   const d = await readChapterDraft(c.req.param('id'), Number(c.req.param('n')))
   return d ? c.json(d) : c.json({ error: 'not_found' }, 404)
+})
+
+app.delete('/:id/drafts/:n', async (c) => {
+  const n = Number(c.req.param('n'))
+  if (!Number.isInteger(n) || n < 1) {
+    return c.json({ error: 'invalid_chapter' }, 400)
+  }
+  return c.json(await deleteDraftsFrom(c.req.param('id'), n))
 })
 
 // ─── SSE ─────────────────────────────────────────────────────────────────

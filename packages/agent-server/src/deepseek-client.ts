@@ -20,14 +20,19 @@ export class DeepSeekError extends Error {
   }
 }
 
-interface ChatOptions {
+export interface ChatOptions {
   temperature?: number
   top_p?: number
   jsonMode?: boolean
 }
 
+export interface ChatJsonClient {
+  chat(prompt: string, opts?: ChatOptions): Promise<string>
+  chatJson<T = unknown>(prompt: string, opts?: Omit<ChatOptions, 'jsonMode'>): Promise<T>
+}
+
 /** Low-level chat/completions 调用，成功返回 message.content 字符串。 */
-export class DeepSeekClient {
+export class DeepSeekClient implements ChatJsonClient {
   private readonly apiKey: string
   private readonly model: string
   private readonly baseUrl: string
@@ -72,14 +77,22 @@ export class DeepSeekClient {
 
         if (resp.ok) {
           const json = (await resp.json()) as {
-            choices?: { message?: { content?: string } }[]
+            choices?: { finish_reason?: string; message?: { content?: string } }[]
           }
-          const content = json.choices?.[0]?.message?.content
+          const choice = json.choices?.[0]
+          const content = choice?.message?.content
           if (typeof content !== 'string') {
             throw new DeepSeekError(
               'malformed response (no message.content)',
               200,
               JSON.stringify(json).slice(0, 500),
+            )
+          }
+          if (choice?.finish_reason === 'length') {
+            throw new DeepSeekError(
+              'truncated response (finish_reason=length)',
+              200,
+              content.slice(0, 500),
             )
           }
           return content

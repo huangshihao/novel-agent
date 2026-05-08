@@ -4,6 +4,7 @@ import { paths } from './paths.js'
 import type {
   ChapterDraftRecord,
   CharacterMapEntry,
+  HookPlan,
   MapsRecord,
   OutlineKeyEvent,
   OutlineRecord,
@@ -75,6 +76,30 @@ function normalizeOutlineKeyEvents(
   })
 }
 
+function normalizeHookPlans(raw: unknown): HookPlan[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const r = item as Partial<HookPlan>
+      const id = typeof r.id === 'string' ? r.id.trim() : ''
+      const type = typeof r.type === 'string' ? r.type : ''
+      const description = typeof r.description === 'string' ? r.description.trim() : ''
+      const payoff_plan = typeof r.payoff_plan === 'string' ? r.payoff_plan.trim() : ''
+      const expected =
+        typeof r.expected_payoff_chapter === 'number' ? r.expected_payoff_chapter : null
+      if (!id) return null
+      return {
+        id,
+        type: type as HookPlan['type'],
+        description,
+        expected_payoff_chapter: expected,
+        payoff_plan,
+      }
+    })
+    .filter((item): item is HookPlan => item !== null)
+}
+
 export async function readOutline(
   novelId: string,
   number: number,
@@ -97,6 +122,10 @@ export async function readOutline(
     referenced_characters: Array.isArray(fm.referenced_characters)
       ? fm.referenced_characters.filter((s): s is string => typeof s === 'string')
       : [],
+    retention_plan: fm.retention_plan ?? null,
+    reader_experience_plan: fm.reader_experience_plan ?? null,
+    golden_three_plan: fm.golden_three_plan ?? null,
+    hook_plans: normalizeHookPlans(fm.hook_plans),
   }
 }
 

@@ -3,16 +3,19 @@ import {
   __clearAll,
   claimChat,
   releaseChat,
+  stopChat,
   getActiveChat,
   getChatEntry,
   setStreamCloser,
 } from './registry.js'
 import type { AgentSession } from '@mariozechner/pi-coding-agent'
 
-const fakeSession = (): AgentSession => ({
+const fakeSession = (overrides: Partial<AgentSession> = {}): AgentSession => ({
+  abort: async () => {},
   dispose: () => {},
   subscribe: () => () => {},
   sendUserMessage: async () => {},
+  ...overrides,
 } as unknown as AgentSession)
 
 beforeEach(() => __clearAll())
@@ -62,5 +65,27 @@ describe('registry (chat-keyed)', () => {
 
   it('setStreamCloser is a no-op for unknown novel/chat', () => {
     expect(() => setStreamCloser('nope', 'nope', () => {})).not.toThrow()
+  })
+
+  it('stopChat aborts the active session before releasing it', async () => {
+    const calls: string[] = []
+    claimChat({
+      novelId: 'n1',
+      chatId: 'c1',
+      session: fakeSession({
+        abort: async () => {
+          calls.push('abort')
+        },
+        dispose: () => {
+          calls.push('dispose')
+        },
+      }),
+    })
+
+    const stopped = await stopChat('n1', 'c1')
+
+    expect(stopped).toBe(true)
+    expect(calls).toEqual(['abort', 'dispose'])
+    expect(getActiveChat('n1')).toBeNull()
   })
 })

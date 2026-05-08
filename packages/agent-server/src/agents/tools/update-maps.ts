@@ -22,17 +22,17 @@ export function buildUpdateMapsTool(novelId: string): ToolDefinition {
     name: 'updateMaps',
     label: '更新置换表',
     description:
-      '写入或更新角色置换表（原名 → 新名）和同题材表层置换。**source 必须是 source/characters/ 实际存在的 canonical_name**——工具会校验并自动从源端派生 source_meta（role / story_function / first_chapter / last_chapter / description）。如果是 target 自创角色（源端不存在），把 source 设为 null 并必填 target_note 说明用途。Upsert 语义：character_entries 按 target 主键合并；setting 给值则整体替换。',
+      '写入或更新角色置换表（原名 → 新名）和同题材表层置换。**source 必须是 getOutlineContext.source_characters 里的 canonical_name**——工具会校验并自动从源端派生 source_meta。如果是 target 自创角色（源端不存在），把 source 设为 null 并必填 target_note 说明用途。Upsert 语义：character_entries 按 target 主键合并；setting 给值则整体替换。',
     promptSnippet:
       'updateMaps({character_entries?, setting?}) - 写置换表（source_meta 自动派生，禁止手写身份）',
     promptGuidelines: [
-      '**首次运行时**先 read target/maps.md 看当前状态（如果存在）',
-      '**character_entries 必须覆盖 source/characters/ 下所有 role !== \'tool\' 的角色**——主角 / 配角 / 家人 / 反派 / 师傅都要给 target 名',
-      '**source 必须是真实存在的源端 canonical_name**（read source/characters/ 确认），编错或不存在直接 reject',
-      '**source_meta 由工具自动从源端派生**（role / story_function / first_chapter / last_chapter / description），不要在调用参数里手写——你写了也会被覆盖',
+      '**首次运行时**先调 getOutlineContext({number: 1}) 看当前 maps 状态（如果存在）',
+      '**character_entries 必须覆盖 getOutlineContext.source_characters 里所有角色**——主角 / 配角 / 家人 / 反派 / 师傅都要给 target 名',
+      '**source 必须是真实存在的源端 canonical_name**（从 getOutlineContext.source_characters 取），编错或不存在直接 reject',
+      '**source_meta 由工具自动从源端派生**，不要在调用参数里手写——你写了也会被覆盖',
       '**target 自创角色**（如"主角的某邻居"原书没有但 target 需要）：source 设为 null，target_note 必填说明这个人在 target 故事里干什么',
       'character_entries 的 target 是改写后的名字：保留性别、大致年龄段、角色功能（mentor/family/antagonist），换姓和名字风格',
-      'setting.original_industry 来自 source/meta.md 的 industry 字段',
+      'setting.original_industry 来自 getOutlineContext.meta.industry 字段',
       '**setting.target_industry 默认必须等于 setting.original_industry**（同题材洗稿）',
       '**风格黑名单**：异能 / 修仙 / 灵气 / 系统流 / 末日废土 / 星际科幻 等——除非源端 genre_tags 已含',
       'setting.key_term_replacements 至少 8-15 条，同年代/同行业/同写实度',

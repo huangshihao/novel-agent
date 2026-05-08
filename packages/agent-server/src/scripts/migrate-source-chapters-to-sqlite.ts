@@ -1,8 +1,8 @@
-import { readdir } from 'node:fs/promises'
+import { readdir, readFile, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { readMd, writeMd } from '../storage/markdown.js'
 import { paths } from '../storage/paths.js'
-import { writeChapterInternal } from '../storage/chapter-internal-store.js'
+import { writeChapterInternal, writeChapterRaw } from '../storage/chapter-internal-store.js'
 import type { KeyEventEntry, WritingRhythm } from '@novel-agent/shared'
 
 interface OldChapterFm {
@@ -90,6 +90,23 @@ async function migrateNovel(novelId: string): Promise<{ migrated: number; skippe
   return { migrated, skipped }
 }
 
+async function migrateRaw(novelId: string): Promise<number> {
+  const dir = paths.sourceRawDir(novelId)
+  if (!existsSync(dir)) return 0
+  const files = await readdir(dir)
+  let migrated = 0
+  for (const fname of files) {
+    if (!fname.endsWith('.txt')) continue
+    const n = Number(fname.replace(/\.txt$/, ''))
+    if (!Number.isFinite(n) || n < 1) continue
+    const text = await readFile(`${dir}/${fname}`, 'utf8')
+    writeChapterRaw(novelId, n, text)
+    migrated++
+  }
+  await rm(dir, { recursive: true, force: true })
+  return migrated
+}
+
 async function main(): Promise<void> {
   const root = paths.root()
   if (!existsSync(root)) {
@@ -106,7 +123,8 @@ async function main(): Promise<void> {
   let totalSkipped = 0
   for (const id of novelDirs) {
     const { migrated, skipped } = await migrateNovel(id)
-    console.log(`[migrate] ${id}: migrated ${migrated}, skipped ${skipped}`)
+    const raw = await migrateRaw(id)
+    console.log(`[migrate] ${id}: migrated ${migrated}, skipped ${skipped}, raw ${raw}`)
     total += migrated
     totalSkipped += skipped
   }

@@ -24,8 +24,10 @@ export function buildWriteChapterTool(
       '调用前先 getChapterContext 拿齐 context',
       '校验失败时按返回的 issues.hits 改正——通常是人名漏注册或者把死了的人写出来了',
       '正文目标 2200-2500 字；> 2800 字直接 reject 必须重写更短版本，< 2000 字会软警告',
+      '**留存执行**：按 outline.retention_plan 写开头承接、中段转折、小兑现和章末具体留扣；前三章额外执行 outline.golden_three_plan 的开篇角色',
+      '**戏剧节拍蓝图**：按 source.dramatic_beat_blueprint 写出相同的状态变化、压力结构、信息差、情绪曲线和章末承诺，不要还原原作事件链',
       '**节奏匹配**：按 source.writing_rhythm.chapter_writing_pattern.beat_sequence 走章内节拍；按 emotional_curve 走情绪曲线；按 text_composition 控制动作/对话/心理/解释配比；按 reader_attention_design 设计开头抓人和章末钩子',
-      '**避雷**：source.originality_risks 列的标志性桥段载体绝不能复刻',
+      '**相似风险**：source.similarity_signals 不是禁用清单；允许题材内自然趋同，但不要把整套事件链、人物关系和解决方式写成原作同款',
     ],
     parameters: Type.Object({
       number: Type.Number(),

@@ -7,13 +7,14 @@ import {
   readSourceHooks,
   readSourceMeta,
 } from '../../storage/source-reader.js'
+import { sanitizeMapsForAgent } from './context-sanitize.js'
 
 export function buildGetChapterContextTool(novelId: string): ToolDefinition {
   return {
     name: 'getChapterContext',
     label: '获取写章 context 包',
     description:
-      '一次性返回写本章正文需要的全部信息：大纲 + 置换表 + 最近 3 章 target 正文 + 涉及角色状态 + 伏笔状态 + **source 章的 writing_rhythm（节奏指引）/ plot_functions / key_events[].function / originality_risks（避雷）**。第 1 章特殊：附带 source/meta.md 风格样本。',
+      '一次性返回写本章正文需要的全部信息：大纲 + 置换表 + 最近 3 章 target 正文 + 涉及角色状态 + 伏笔状态 + **source 章的 writing_rhythm（节奏指引）/ dramatic_beat_blueprint（戏剧节拍蓝图）/ plot_functions / key_events[].function / similarity_signals（相似风险提示）**。不返回原文、章节简介、事件 desc 或风格样本文本。',
     promptSnippet: 'getChapterContext({number}) - 一次拿全写章所需 context',
     promptGuidelines: [
       '写每一章正文前**必须**先调用一次',
@@ -21,7 +22,9 @@ export function buildGetChapterContextTool(novelId: string): ToolDefinition {
       '返回的 maps.character_map 是写正文时人名的唯一来源',
       '返回的 alive_status 里 alive===false 的角色不能在正文里有动作（writeChapter 会硬拒）',
       '返回的 source.writing_rhythm 决定本章节奏：beat_sequence 走顺序、emotional_curve 走情绪、text_composition 走配比、reader_attention_design 走开头/章末钩子',
-      '返回的 source.originality_risks 是改写时**绝对不能照搬**的标志性桥段载体',
+      '返回的 source.dramatic_beat_blueprint 只用于把正文写出相同的状态变化、压力结构、信息差和情绪曲线，不得还原原作事件链',
+      '返回的 hook_ledger 是当前钩子账本：优先处理 overdue=true 的钩子，正文必须兑现 outline.hooks_to_payoff，不能新增未登记的假悬念',
+      '返回的 source.similarity_signals 是相似风险提示，不是禁用清单；正文可以有题材内自然趋同，但不能把整套事件链写成原作同款',
     ],
     parameters: Type.Object({
       number: Type.Number(),
@@ -58,15 +61,47 @@ export function buildGetChapterContextTool(novelId: string): ToolDefinition {
         ...outline.hooks_to_plant.map((id) => ({ ...(hooksMap.get(id) ?? { id, description: '' }), action: 'plant' as const })),
         ...outline.hooks_to_payoff.map((id) => ({ ...(hooksMap.get(id) ?? { id, description: '' }), action: 'payoff' as const })),
       ]
+      const hook_ledger = [
+        ...sourceHooks
+          .filter((h) => state?.hooks[h.id]?.status !== 'paid_off')
+          .map((h) => ({
+            id: h.id,
+            type: h.category,
+            description: h.description,
+            planted_chapter: h.planted_chapter,
+            expected_payoff_chapter: h.payoff_chapter,
+            payoff_plan: '',
+            source: 'source' as const,
+            open_chapters: Math.max(0, number - h.planted_chapter),
+            overdue:
+              typeof h.payoff_chapter === 'number' && h.payoff_chapter < number,
+          })),
+        ...(state?.new_hooks ?? [])
+          .filter((h) => h.status === 'open')
+          .map((h) => ({
+            id: h.id,
+            type: h.type ?? null,
+            description: h.description,
+            planted_chapter: h.planted_chapter,
+            expected_payoff_chapter: h.expected_payoff_chapter,
+            payoff_plan: h.payoff_plan ?? '',
+            source: 'new' as const,
+            open_chapters: Math.max(0, number - h.planted_chapter),
+            overdue:
+              typeof h.expected_payoff_chapter === 'number' &&
+              h.expected_payoff_chapter < number,
+          })),
+      ]
 
       const sourceChapter = await readSourceChapter(novelId, outline.source_chapter_ref)
 
       const result: Record<string, unknown> = {
         outline,
-        maps,
+        maps: sanitizeMapsForAgent(maps),
         recent_chapters: recent,
         involved_characters,
         involved_hooks,
+        hook_ledger,
         source: sourceChapter
           ? {
               chapter_ref: sourceChapter.number,
@@ -78,6 +113,8 @@ export function buildGetChapterContextTool(novelId: string): ToolDefinition {
                 depends_on: e.depends_on,
               })),
               originality_risks: sourceChapter.originality_risks,
+              similarity_signals: sourceChapter.originality_risks,
+              dramatic_beat_blueprint: sourceChapter.dramatic_beat_blueprint,
               writing_rhythm: sourceChapter.writing_rhythm,
             }
           : null,
@@ -85,7 +122,6 @@ export function buildGetChapterContextTool(novelId: string): ToolDefinition {
 
       if (number === 1 || recent.length === 0) {
         const meta = await readSourceMeta(novelId)
-        result['style_samples'] = meta?.style_samples ?? []
         result['style_tags'] = meta?.style_tags ?? []
       }
 

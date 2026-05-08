@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+:root {
+  --paper: #f4f6f2;
+  --paper-soft: #faf9f4;
+  --ink: #202523;
+  --muted: #69716d;
+  --line: #d9ded4;
+  --line-strong: #bcc6ba;
+  --accent: #b65f27;
+  --accent-soft: #f2dfc9;
+  --sage: #1f6f5b;
+  --indigo: #354f7d;
+}
+
 html, body, #root {
   height: 100%;
 }
@@ -7,4 +20,69 @@ html, body, #root {
 body {
   font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: #d9e7c6;
+  color: var(--ink);
+}
+
+.paper-grid {
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(rgba(32, 37, 35, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(32, 37, 35, 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.surface {
+  border: 1px solid var(--line);
+  background: rgba(250, 249, 244, 0.92);
+  box-shadow: 0 18px 50px rgba(45, 53, 48, 0.08);
+  border-radius: 8px;
+}
+
+.surface-tight {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 252, 0.84);
+  border-radius: 6px;
+}
+
+.ink-rule {
+  border-color: color-mix(in srgb, var(--ink) 16%, transparent);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--ink);
+  color: #faf9f4;
+  transition: transform 160ms ease, background-color 160ms ease, opacity 160ms ease;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #111513;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 252, 0.72);
+  color: var(--ink);
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--ink);
+  background: #fffefa;
+  transform: translateY(-1px);
 }

@@ -36,6 +36,9 @@ function makeOutline(n: number, plot: string, events: string[]): OutlineRecord {
     plot,
     key_events: events.map((e) => ({ function: '', new_carrier: e })),
     referenced_characters: [],
+    retention_plan: null,
+    golden_three_plan: null,
+    hook_plans: [],
   }
 }
 
@@ -74,6 +77,46 @@ describe('target-reader', () => {
         { function: '建立反派对抗关系', new_carrier: '撞见上司' },
       ],
       referenced_characters: [],
+      retention_plan: {
+        inherited_hook: '第二章末的账本被调包',
+        chapter_goal: '让主角锁定第一阶段目标',
+        opening_hook: '账本在众人面前缺页',
+        new_obstacle: '负责保管账本的人反咬主角',
+        midpoint_turn: '缺页内容其实被主角提前拍下',
+        payoff: '主角当场逼出第一个同谋',
+        ending_hook: '缺页背面出现父亲旧印',
+        reader_expectation: '读者想看主角查清父亲旧案',
+        retention_risk: '信息量偏大，需要压缩解释',
+      },
+      golden_three_plan: {
+        chapter_role: 'mainline_lock',
+        reader_contract: {
+          core_emotion: '压迫后的反击',
+          main_selling_point: '主角用证据链打脸',
+          protagonist_desire: '查清父亲旧案',
+          main_conflict: '旧案相关势力不断灭口',
+          long_term_question: '父亲到底藏了什么证据',
+        },
+        diagnostic_scores: {
+          protagonist_entry_speed: 9,
+          conflict_strength: 8,
+          empathy: 8,
+          mainline_clarity: 9,
+          payoff_clarity: 8,
+          ending_hook_strength: 9,
+          information_density: 7,
+          platform_fit: 8,
+        },
+      },
+      hook_plans: [
+        {
+          id: 'nhk-001',
+          type: 'secret',
+          description: '父亲旧印对应一份失踪档案',
+          expected_payoff_chapter: 6,
+          payoff_plan: '第六章让主角拿到档案副本',
+        },
+      ],
     })
     const o = await readOutline('nv-1', 3)
     expect(o).not.toBeNull()
@@ -92,6 +135,9 @@ describe('target-reader', () => {
       { function: '埋下悬念', new_carrier: '发现密室' },
       { function: '建立反派对抗关系', new_carrier: '撞见上司' },
     ])
+    expect(o!.retention_plan?.midpoint_turn).toBe('缺页内容其实被主角提前拍下')
+    expect(o!.golden_three_plan?.chapter_role).toBe('mainline_lock')
+    expect(o!.hook_plans?.[0]?.expected_payoff_chapter).toBe(6)
   })
 
   it('listOutlines with range filters and sorts', async () => {

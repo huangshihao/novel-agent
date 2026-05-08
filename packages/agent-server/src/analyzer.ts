@@ -4,13 +4,12 @@
 //
 // 外部入口：startAnalysis(novelId) —— 异步起飞，通过 event-bus 广播进度。
 
-import { readFile } from 'node:fs/promises'
-import { DeepSeekClient, DeepSeekError, pMap } from './deepseek-client.js'
+import { DeepSeekError, pMap, type ChatJsonClient } from './deepseek-client.js'
 import { buildAnalyzerLlmClient } from './lib/llm-client.js'
 import { emitAnalysisEvent } from './event-bus.js'
-import { paths } from './storage/paths.js'
 import { writeSourceChapter } from './storage/source-writer.js'
 import { listSourceChapters, listSourceChaptersFull, wipeSourceAggregates } from './storage/source-reader.js'
+import { readChapterRaw } from './storage/chapter-internal-store.js'
 import {
   writeSourceCharacter,
   writeSourceHooks,
@@ -20,13 +19,14 @@ import {
 import { readNovelIndex, updateNovelIndex } from './storage/novel-index.js'
 import type {
   CharacterStoryFunction,
+  DramaticBeatBlueprint,
   KeyEventEntry,
   Replaceability,
   WritingRhythm,
 } from '@novel-agent/shared'
 
 const BATCH_SIZE = 5
-const RHYTHM_BATCH_SIZE = 3
+const RHYTHM_BATCH_SIZE = 1
 const MAX_CHAPTER_CHARS = 1500
 const DEFAULT_CONCURRENCY = 3
 
@@ -76,6 +76,7 @@ interface ChapterExtract {
   plot_functions: string[]
   key_events: KeyEventEntry[]
   originality_risks: string[]
+  dramatic_beat_blueprint: DramaticBeatBlueprint | null
   hooks_planted: { desc: string; category: HookCategoryCode | null }[]
   hooks_paid: { ref_desc: string }[]
 }
@@ -122,7 +123,7 @@ function extractPrompt(
 
   return `你是中文网络小说**功能分析师**。下面是若干章原文。
 
-我们在做一件事：把这本网文"洗稿"成一本同类型新书。**洗稿的逻辑是抽掉具体载体、保留剧情功能** —— 改写时要在同一个功能槽里塞新事件，所以你这一步的核心是把每章每个事件**功能化标注**，方便下游改写器换载体。
+我们在做一件事：把原作加工成可用于原创改编的中间层。核心不是复述剧情，而是抽掉具体载体，保留每章背后的**戏剧节拍蓝图**：状态变化、压力结构、情绪曲线、爽点兑现、资源流动、信息差和章末承诺。
 
 请为每一章输出结构化分析。
 
@@ -208,18 +209,32 @@ function extractPrompt(
 - can_reorder：和**本章其他事件**之间能否调换顺序（无前后因果就 true）
 - depends_on：依赖前文哪些事件功能（用 function 字符串引用，不是 desc）。无依赖填 []
 
-**originality_risks**：改写时**绝对要避开**的标志性桥段 —— 0-3 条。这些是"一眼看出抄袭"的元凶。
+**originality_risks**：相似风险提示 —— 0-3 条。这些不是禁用清单，而是下游生成时需要避免“整套事件链一比一相似”的提示。
 - 抽象形态描述（**不要绑死人名/具名物名**），载体级即可：
   - 「<主角>在<某类场地>捡到<某类高阶物品>」
   - 「<某类聚会场合>被反派<某种当众羞辱方式>」
   - 「<指引者角色>留下<某类未完信息>后离场」
   - 「<规则系统>在主角危急时第一次显化奖励」
-- 抽象层级：能识别"这是原作的标志性桥段"，但用占位符指代具体身份/物品
-- 大多数章不需要填；本章无明显标志性桥段就输出 []
+- 抽象层级：能识别“这组元素如果成套复现会像原作”，但用占位符指代具体身份/物品
+- 大多数章不需要填；本章无明显相似风险信号就输出 []
 
 **characters_present**：本章有名有姓、有台词或行动的角色（路人不算）。
 
 **summary**：100-200 字详细摘要，含主要事件与关键人物的具体行动（人读用，不参与功能化）。
+
+**dramatic_beat_blueprint**：本章的戏剧节拍蓝图。它必须处在中间抽象层级：保留"为什么好看"，不要保留原作具体人物关系、事件链、场景、道具、反派行为、解决办法或标志性桥段。
+- beat_function：这一章在故事结构中的作用
+- state_before / state_after：主角本章前后的处境变化
+- pressure_pattern：压力如何出现、加重、转向、释放
+- conflict_engine：冲突由资源/身份/规则/利益/误会/权力/生存/情感中的哪些驱动
+- reader_expectation：本章制造了什么读者期待
+- payoff_type：本章兑现的爽点或信息类型，数组
+- reversal_point：关键转折的抽象描述，不写具体载体
+- resource_or_status_change：主角资源、地位、关系、名声、机会的变化
+- information_gap：谁掌握信息，谁误判
+- emotional_curve：本章情绪如何变化
+- hook_promise：章末承诺下一章会发生什么类型的事情
+- intensity：1-5，戏剧强度
 
 ─── 输出 JSON ───
 
@@ -242,6 +257,21 @@ function extractPrompt(
         }
       ],
       "originality_risks": [],
+      "dramatic_beat_blueprint": {
+        "beat_function": "",
+        "state_before": "",
+        "state_after": "",
+        "pressure_pattern": "",
+        "conflict_engine": "",
+        "reader_expectation": "",
+        "payoff_type": [],
+        "reversal_point": "",
+        "resource_or_status_change": "",
+        "information_gap": "",
+        "emotional_curve": "",
+        "hook_promise": "",
+        "intensity": 1
+      },
       "hooks_planted": [{"desc": "...", "category": "suspense"}],
       "hooks_paid": [{"ref_desc": "..."}]
     }
@@ -697,15 +727,12 @@ async function sampleStylePassages(novelId: string, totalChapters: number): Prom
   }
   const samples: string[] = []
   for (const n of indices) {
-    try {
-      const text = await readFile(paths.sourceRaw(novelId, n), 'utf8')
-      const paras = text.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length >= 50 && p.length <= 600)
-      if (paras.length === 0) continue
-      const pick = paras[Math.floor(paras.length / 2)]!
-      samples.push(pick.slice(0, 400))
-    } catch {
-      /* skip */
-    }
+    const text = readChapterRaw(novelId, n)
+    if (!text) continue
+    const paras = text.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length >= 50 && p.length <= 600)
+    if (paras.length === 0) continue
+    const pick = paras[Math.floor(paras.length / 2)]!
+    samples.push(pick.slice(0, 400))
   }
   return samples
 }
@@ -735,9 +762,9 @@ function deferred<T>(): {
 }
 
 async function runPass1(
-  client: DeepSeekClient,
+  client: ChatJsonClient,
   novelId: string,
-  chapters: { number: number; title: string; rawPath: string }[],
+  chapters: { number: number; title: string }[],
   concurrency: number,
   total: number,
 ): Promise<Map<number, ChapterExtract>> {
@@ -746,7 +773,7 @@ async function runPass1(
   const withContent = await Promise.all(
     chapters.map(async (c) => ({
       ...c,
-      content: await readFile(c.rawPath, 'utf8'),
+      content: readChapterRaw(novelId, c.number),
     })),
   )
 
@@ -827,6 +854,7 @@ async function runPass1(
       plot_functions: extract.plot_functions,
       originality_risks: extract.originality_risks,
       writing_rhythm: rhythm,
+      dramatic_beat_blueprint: extract.dramatic_beat_blueprint,
     })
     emitAnalysisEvent(novelId, {
       type: 'analyze.chapter',
@@ -880,6 +908,7 @@ function normalizeExtract(raw: Partial<ChapterExtract> & { chapter_id?: unknown 
     originality_risks: Array.isArray(raw.originality_risks)
       ? raw.originality_risks.map((s) => String(s).trim()).filter(Boolean)
       : [],
+    dramatic_beat_blueprint: normalizeDramaticBeatBlueprint(raw.dramatic_beat_blueprint),
     hooks_planted: Array.isArray(raw.hooks_planted)
       ? raw.hooks_planted
           .map((h) => {
@@ -901,6 +930,29 @@ function normalizeExtract(raw: Partial<ChapterExtract> & { chapter_id?: unknown 
           }))
           .filter((h) => h.ref_desc)
       : [],
+  }
+}
+
+function normalizeDramaticBeatBlueprint(raw: unknown): DramaticBeatBlueprint | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const intensity = Number(r['intensity'])
+  return {
+    beat_function: String(r['beat_function'] ?? '').trim(),
+    state_before: String(r['state_before'] ?? '').trim(),
+    state_after: String(r['state_after'] ?? '').trim(),
+    pressure_pattern: String(r['pressure_pattern'] ?? '').trim(),
+    conflict_engine: String(r['conflict_engine'] ?? '').trim(),
+    reader_expectation: String(r['reader_expectation'] ?? '').trim(),
+    payoff_type: Array.isArray(r['payoff_type'])
+      ? r['payoff_type'].map((s) => String(s).trim()).filter(Boolean)
+      : [],
+    reversal_point: String(r['reversal_point'] ?? '').trim(),
+    resource_or_status_change: String(r['resource_or_status_change'] ?? '').trim(),
+    information_gap: String(r['information_gap'] ?? '').trim(),
+    emotional_curve: String(r['emotional_curve'] ?? '').trim(),
+    hook_promise: String(r['hook_promise'] ?? '').trim(),
+    intensity: Number.isFinite(intensity) ? Math.min(5, Math.max(1, Math.round(intensity))) : 1,
   }
 }
 
@@ -1000,7 +1052,7 @@ function normalizeWritingRhythm(raw: unknown): WritingRhythm {
 // ─── Pass 2: aggregate ────────────────────────────────────────────────────
 
 async function runPass2(
-  client: DeepSeekClient,
+  client: ChatJsonClient,
   novelId: string,
   extracts: Map<number, ChapterExtract>,
 ): Promise<void> {
@@ -1303,12 +1355,11 @@ async function runAnalysis(novelId: string, opts: StartAnalysisOpts): Promise<vo
   })
   emitAnalysisEvent(novelId, { type: 'status', status: 'analyzing' })
 
-  const chaptersInRange: { number: number; title: string; rawPath: string }[] = []
+  const chaptersInRange: { number: number; title: string }[] = []
   for (let n = from; n <= to; n++) {
     chaptersInRange.push({
       number: n,
       title: `第${n}章`,
-      rawPath: paths.sourceRaw(novelId, n),
     })
   }
 
@@ -1348,7 +1399,7 @@ async function runAnalysis(novelId: string, opts: StartAnalysisOpts): Promise<vo
 }
 
 /** 清空派生文件（character/subplot/hook/meta）并基于全部 extract 重新跑 Pass 2。 */
-async function wipeAndRunPass2(client: DeepSeekClient, novelId: string): Promise<void> {
+async function wipeAndRunPass2(client: ChatJsonClient, novelId: string): Promise<void> {
   const allExtracts = await loadAllExtracts(novelId)
   await wipeSourceAggregates(novelId)
   await runPass2(client, novelId, allExtracts)
@@ -1391,6 +1442,7 @@ async function loadAllExtracts(novelId: string): Promise<Map<number, ChapterExtr
       plot_functions: ch.plot_functions,
       key_events: ch.key_events,
       originality_risks: ch.originality_risks,
+      dramatic_beat_blueprint: ch.dramatic_beat_blueprint,
       hooks_planted: ch.hooks_planted_candidates.map((c) => ({
         desc: c.desc,
         category: c.category,

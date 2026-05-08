@@ -6,6 +6,7 @@ import type {
   Hook,
   MapsRecord,
   OutlineRecord,
+  OutlineEvaluationResponse,
   ChapterDraftRecord,
   ChapterDraftSummary,
   StateRecord,
@@ -13,7 +14,14 @@ import type {
 
 export type ChapterListItem = Pick<
   Chapter,
-  'id' | 'novel_id' | 'number' | 'title' | 'summary' | 'plot_functions' | 'originality_risks'
+  | 'id'
+  | 'novel_id'
+  | 'number'
+  | 'title'
+  | 'summary'
+  | 'plot_functions'
+  | 'originality_risks'
+  | 'dramatic_beat_blueprint'
 >
 
 async function j<T>(r: Response): Promise<T> {
@@ -68,10 +76,24 @@ export const api = {
     fetch(`/api/novel/${id}/outlines`).then(j<OutlineRecord[]>),
   getOutline: (id: string, n: number) =>
     fetch(`/api/novel/${id}/outlines/${n}`).then(j<OutlineRecord>),
+  evaluateOutlines: (id: string, from: number, to: number) =>
+    fetch(`/api/novel/${id}/outlines/evaluate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to }),
+    }).then(j<OutlineEvaluationResponse>),
+  deleteOutlinesFrom: (id: string, n: number) =>
+    fetch(`/api/novel/${id}/outlines/${n}`, { method: 'DELETE' }).then(
+      j<{ deletedOutlines: number[]; deletedDrafts: number[] }>,
+    ),
   listDrafts: (id: string) =>
     fetch(`/api/novel/${id}/drafts`).then(j<ChapterDraftSummary[]>),
   getDraft: (id: string, n: number) =>
     fetch(`/api/novel/${id}/drafts/${n}`).then(j<ChapterDraftRecord>),
+  deleteDraftsFrom: (id: string, n: number) =>
+    fetch(`/api/novel/${id}/drafts/${n}`, { method: 'DELETE' }).then(
+      j<{ deletedDrafts: number[] }>,
+    ),
   getState: (id: string) =>
     fetch(`/api/novel/${id}/state`).then(j<StateRecord | null>),
 }

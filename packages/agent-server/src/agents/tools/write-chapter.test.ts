@@ -38,6 +38,9 @@ function makeOutline(overrides: Partial<OutlineRecord> = {}): OutlineRecord {
     plot: overrides.plot ?? '剧情简述',
     key_events: overrides.key_events ?? [],
     referenced_characters: overrides.referenced_characters ?? [],
+    retention_plan: overrides.retention_plan ?? null,
+    golden_three_plan: overrides.golden_three_plan ?? null,
+    hook_plans: overrides.hook_plans ?? [],
   }
 }
 
@@ -166,5 +169,52 @@ describe('buildWriteChapterTool', () => {
     expect(after).not.toBeNull()
     expect(after!.alive_status['林清月']!.last_seen_chapter).toBe(2)
     expect(after!.alive_status['苏景行']!.last_seen_chapter).toBe(2)
+  })
+
+  it('records planned hook details into state when writing chapter', async () => {
+    await writeMaps(novelId, {
+      character_map: [{ source: '原主角', target: '林清月', source_meta: null, target_note: null }],
+      setting_map: null,
+    })
+    await writeState(novelId, {
+      alive_status: { 林清月: { alive: true, last_seen_chapter: 0 } },
+      hooks: {},
+      new_hooks: [],
+    })
+    await writeOutline(
+      novelId,
+      makeOutline({
+        number: 1,
+        hooks_to_plant: ['nhk-001'],
+        hook_plans: [
+          {
+            id: 'nhk-001',
+            type: 'secret',
+            description: '林清月发现旧账本缺了一页',
+            expected_payoff_chapter: 4,
+            payoff_plan: '第四章让她拿到缺页拓印',
+          },
+        ],
+      }),
+    )
+
+    const content = '林清月翻开账本，指尖停在撕裂的缺口上。' + '夜风掠过窗棂。'.repeat(180)
+    const result = await execTool(
+      novelId,
+      { from: 1, to: 5 },
+      { number: 1, title: '缺页', content },
+    )
+
+    expect((result.details as { ok: boolean }).ok).toBe(true)
+    const after = await readState(novelId)
+    expect(after!.new_hooks).toContainEqual({
+      id: 'nhk-001',
+      type: 'secret',
+      description: '林清月发现旧账本缺了一页',
+      planted_chapter: 1,
+      expected_payoff_chapter: 4,
+      payoff_plan: '第四章让她拿到缺页拓印',
+      status: 'open',
+    })
   })
 })

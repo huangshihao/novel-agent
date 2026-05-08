@@ -3,10 +3,12 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type {
   CharacterStoryFunction,
+  DramaticBeatBlueprint,
   HookCategory,
   Replaceability,
   WritingRhythm,
 } from '@novel-agent/shared'
+import { getAnalyzedCoverage } from '@novel-agent/shared'
 import { api } from '../lib/api'
 import { cn, statusLabel, statusStyle } from '../lib/ui'
 import { useConfirm } from '../lib/use-confirm'
@@ -61,22 +63,30 @@ export function NovelDetailPage() {
     rangeTotal > 0
       ? Math.round((novel.analyzed_count / rangeTotal) * 100)
       : 0
-  // 只要不在分析中且至少已完成 1 章，就显示工具条（包含「继续分析」和「仅重聚合」）
+  // 只要不在分析中且至少已完成 1 章，就显示继续分析和高级操作。
   const showTools = !analyzing && novel.analyzed_to > 0
   const canContinue = novel.analyzed_to < novel.chapter_count
+  const coverage = getAnalyzedCoverage({
+    analyzedTo: novel.analyzed_to,
+    chapterCount: novel.chapter_count,
+  })
 
   return (
     <div className="space-y-6">
-      <div className="text-sm text-neutral-500">
-        <Link to="/" className="hover:underline underline-offset-4">
+      <div className="text-sm text-[var(--muted)]">
+        <Link to="/" className="hover:text-[var(--ink)]">
           ← 返回列表
         </Link>
       </div>
 
-      <header className="flex items-start gap-4">
+      <header className="surface p-5">
+        <div className="flex items-start gap-4">
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-semibold truncate">{novel.title}</h1>
-          <div className="text-sm text-neutral-500 mt-1">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--accent)]">
+            Analysis Dossier
+          </p>
+          <h1 className="mt-2 truncate text-3xl font-semibold leading-tight">{novel.title}</h1>
+          <div className="mt-2 text-sm text-[var(--muted)]">
             共 {novel.chapter_count} 章 · 已分析至第 {novel.analyzed_to} 章
             {analyzing &&
               ` · 本次 ${novel.analysis_from}–${Math.min(
@@ -88,7 +98,7 @@ export function NovelDetailPage() {
         <div className="flex items-center gap-2 mt-2">
           <span
             className={cn(
-              'text-xs px-2 py-0.5 rounded-full leading-none',
+              'text-xs px-2.5 py-1 rounded-full leading-none',
               statusStyle[novel.status],
             )}
           >
@@ -97,18 +107,43 @@ export function NovelDetailPage() {
           {novel.status === 'ready' && (
             <Link
               to={`/novels/${id}/rewrite`}
-              className="px-3 py-1 text-xs rounded bg-amber-500 text-white leading-none"
+              className="btn-primary px-3 py-1.5 text-xs leading-none"
             >
               去改写 →
             </Link>
           )}
+        </div>
+        </div>
+        <div className="mt-5 grid gap-2 sm:grid-cols-3">
+          <div className="surface-tight px-3 py-2">
+            <div className="text-xs text-[var(--muted)]">章节总量</div>
+            <div className="mt-1 text-lg font-semibold">{novel.chapter_count}</div>
+          </div>
+          <div className="surface-tight px-3 py-2">
+            <div className="text-xs text-[var(--muted)]">已分析章节</div>
+            <div className="mt-1 text-lg font-semibold">
+              {coverage.analyzed} / {coverage.total} 章
+            </div>
+          </div>
+          <div className="surface-tight px-3 py-2">
+            <div className="flex items-center justify-between gap-3 text-xs text-[var(--muted)]">
+              <span>已分析占比</span>
+              <span className="font-mono">{coverage.percent}%</span>
+            </div>
+            <div className="mt-1 h-2 overflow-hidden rounded-full bg-[#e6e9e2]">
+              <div
+                className="h-full rounded-full bg-[var(--sage)]"
+                style={{ width: `${coverage.percent}%` }}
+              />
+            </div>
+          </div>
         </div>
       </header>
 
       {showTools && <ContinueAnalysisBar novelId={id} canContinue={canContinue} />}
 
       {analyzing && (
-        <div className="rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="surface p-4">
           <div className="flex items-center justify-between text-sm mb-2">
             <span className="text-neutral-600">
               {novel.status === 'splitting'
@@ -123,11 +158,11 @@ export function NovelDetailPage() {
                 : '聚合中'}
             </span>
           </div>
-          <div className="h-2 bg-neutral-100 rounded-full overflow-hidden">
+          <div className="h-2 bg-[#e6e9e2] rounded-full overflow-hidden">
             <div
               className={cn(
                 'h-full transition-[width] duration-500',
-                percent < 100 ? 'bg-amber-400' : 'bg-amber-400 animate-pulse',
+                percent < 100 ? 'bg-[var(--accent)]' : 'bg-[var(--accent)] animate-pulse',
               )}
               style={{ width: `${percent}%` }}
             />
@@ -136,12 +171,12 @@ export function NovelDetailPage() {
       )}
 
       {novel.status === 'failed' && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+        <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
           分析失败: {novel.error ?? '未知错误'}
         </div>
       )}
 
-      <nav className="sticky top-0 z-10 -mx-6 px-6 flex gap-1 border-b border-neutral-200 bg-neutral-50/95 backdrop-blur text-sm">
+      <nav className="sticky top-0 z-10 -mx-5 flex gap-1 border-y ink-rule bg-[rgba(244,246,242,0.92)] px-5 text-sm backdrop-blur sm:-mx-6 sm:px-6">
         {(
           [
             ['chapters', '章节'],
@@ -156,8 +191,8 @@ export function NovelDetailPage() {
             className={cn(
               'px-3 py-2 border-b-2 -mb-px transition-colors',
               tab === key
-                ? 'border-neutral-900 text-neutral-900'
-                : 'border-transparent text-neutral-500 hover:text-neutral-900',
+                ? 'border-[var(--accent)] text-[var(--ink)]'
+                : 'border-transparent text-[var(--muted)] hover:text-[var(--ink)]',
             )}
           >
             {label}
@@ -228,7 +263,7 @@ function ChaptersTab({ novelId }: { novelId: string }) {
         return (
           <li
             key={c.id}
-            className="rounded border border-neutral-200 bg-white p-3 text-sm"
+            className="surface-tight p-3 text-sm"
           >
             <div className="flex items-start gap-2">
               <div className="flex-1 min-w-0">
@@ -248,6 +283,11 @@ function ChaptersTab({ novelId }: { novelId: string }) {
                     ))}
                   </div>
                 )}
+                {c.dramatic_beat_blueprint?.beat_function && (
+                  <p className="mt-2 text-xs text-neutral-600">
+                    戏剧节拍：{c.dramatic_beat_blueprint.beat_function}
+                  </p>
+                )}
                 {c.summary ? (
                   <p className="text-neutral-700 mt-2 leading-relaxed">{c.summary}</p>
                 ) : (
@@ -255,7 +295,7 @@ function ChaptersTab({ novelId }: { novelId: string }) {
                 )}
                 {(c.originality_risks?.length ?? 0) > 0 && (
                   <div className="mt-2 text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded px-2 py-1.5">
-                    <span className="font-medium">⚠ 标志性桥段（改写避开）：</span>
+                    <span className="font-medium">相似风险提示：</span>
                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                       {c.originality_risks!.map((r, i) => (
                         <li key={i}>{r}</li>
@@ -266,7 +306,7 @@ function ChaptersTab({ novelId }: { novelId: string }) {
               </div>
               <button
                 onClick={() => setExpanded(isOpen ? null : c.number)}
-                className="text-xs text-neutral-500 hover:text-neutral-900 px-2 py-0.5 rounded border border-neutral-200 shrink-0 mt-0.5"
+                className="btn-secondary mt-0.5 shrink-0 px-2 py-1 text-xs"
               >
                 {isOpen ? '收起' : '详情'}
               </button>
@@ -294,7 +334,7 @@ function ChapterDetail({ novelId, number }: { novelId: string; number: number })
     )
   if (!data) return null
   return (
-    <div className="mt-3 pt-3 border-t border-neutral-100 space-y-3">
+    <div className="mt-3 space-y-3 border-t border-[var(--line)] pt-3">
       {(data.key_events?.length ?? 0) > 0 && (
         <section>
           <h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1.5">
@@ -336,8 +376,56 @@ function ChapterDetail({ novelId, number }: { novelId: string; number: number })
           </ul>
         </section>
       )}
+      {data.dramatic_beat_blueprint && (
+        <DramaticBeatBlueprintView blueprint={data.dramatic_beat_blueprint} />
+      )}
       {data.writing_rhythm && <WritingRhythmView rhythm={data.writing_rhythm} />}
     </div>
+  )
+}
+
+function DramaticBeatBlueprintView({ blueprint }: { blueprint: DramaticBeatBlueprint }) {
+  const rawRows: Array<[string, string]> = [
+    ['章节功能', blueprint.beat_function],
+    ['状态变化', `${blueprint.state_before} -> ${blueprint.state_after}`],
+    ['压力结构', blueprint.pressure_pattern],
+    ['冲突引擎', blueprint.conflict_engine],
+    ['读者期待', blueprint.reader_expectation],
+    ['转折点', blueprint.reversal_point],
+    ['资源/地位变化', blueprint.resource_or_status_change],
+    ['信息差', blueprint.information_gap],
+    ['情绪曲线', blueprint.emotional_curve],
+    ['章末承诺', blueprint.hook_promise],
+  ]
+  const rows = rawRows.filter(([, value]) => value.trim().length > 0)
+  return (
+    <section>
+      <h4 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1.5">
+        戏剧节拍蓝图
+      </h4>
+      <div className="rounded border border-indigo-100 bg-indigo-50/50 p-2 text-xs">
+        {blueprint.payoff_type.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1">
+            {blueprint.payoff_type.map((type, i) => (
+              <span key={i} className="rounded bg-white px-1.5 py-0.5 text-indigo-700">
+                {type}
+              </span>
+            ))}
+            <span className="rounded bg-white px-1.5 py-0.5 text-neutral-600">
+              强度 {blueprint.intensity}/5
+            </span>
+          </div>
+        )}
+        <dl className="space-y-1.5">
+          {rows.map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-neutral-500">{label}</dt>
+              <dd className="text-neutral-800">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
   )
 }
 
@@ -364,7 +452,7 @@ function WritingRhythmView({ rhythm }: { rhythm: WritingRhythm }) {
       </h4>
       <div className="grid sm:grid-cols-2 gap-3 text-xs">
         {cwp.structure_type && (
-          <div className="rounded border border-neutral-100 bg-neutral-50 p-2">
+          <div className="surface-tight p-2">
             <div className="text-neutral-500 mb-0.5">结构类型 / 核心节奏</div>
             <div className="text-neutral-800 font-medium">{cwp.structure_type}</div>
             {cwp.core_rhythm && (
@@ -373,7 +461,7 @@ function WritingRhythmView({ rhythm }: { rhythm: WritingRhythm }) {
           </div>
         )}
         {cwp.beat_sequence.length > 0 && (
-          <div className="rounded border border-neutral-100 bg-neutral-50 p-2">
+          <div className="surface-tight p-2">
             <div className="text-neutral-500 mb-0.5">节拍顺序</div>
             <ol className="list-decimal list-inside space-y-0.5 text-neutral-700">
               {cwp.beat_sequence.map((b, i) => (
@@ -383,7 +471,7 @@ function WritingRhythmView({ rhythm }: { rhythm: WritingRhythm }) {
           </div>
         )}
         {ratios.length > 0 && (
-          <div className="rounded border border-neutral-100 bg-neutral-50 p-2">
+          <div className="surface-tight p-2">
             <div className="text-neutral-500 mb-0.5">文本配比</div>
             <div className="flex flex-wrap gap-1">
               {ratios.map(([k, v]) => (
@@ -395,7 +483,7 @@ function WritingRhythmView({ rhythm }: { rhythm: WritingRhythm }) {
           </div>
         )}
         {(pp.opening_speed || pp.overall_rhythm) && (
-          <div className="rounded border border-neutral-100 bg-neutral-50 p-2">
+          <div className="surface-tight p-2">
             <div className="text-neutral-500 mb-0.5">速度</div>
             {pp.opening_speed && (
               <div className="text-neutral-700">
@@ -406,7 +494,7 @@ function WritingRhythmView({ rhythm }: { rhythm: WritingRhythm }) {
           </div>
         )}
         {emotions.length > 0 && (
-          <div className="rounded border border-neutral-100 bg-neutral-50 p-2">
+          <div className="surface-tight p-2">
             <div className="text-neutral-500 mb-0.5">情绪曲线</div>
             <div className="text-neutral-700">{emotions.join(' → ')}</div>
             {ec.emotion_shift_points.length > 0 && (
@@ -422,7 +510,7 @@ function WritingRhythmView({ rhythm }: { rhythm: WritingRhythm }) {
           </div>
         )}
         {(rad.opening_hook || rad.chapter_end_hook) && (
-          <div className="rounded border border-neutral-100 bg-neutral-50 p-2 sm:col-span-2">
+          <div className="surface-tight p-2 sm:col-span-2">
             <div className="text-neutral-500 mb-0.5">钩子设计</div>
             {rad.opening_hook && (
               <div className="text-neutral-700">开头：{rad.opening_hook}</div>
@@ -479,7 +567,7 @@ function CharactersTab({ novelId }: { novelId: string }) {
         return (
           <li
             key={c.id}
-            className="rounded border border-neutral-200 bg-white p-3 text-sm"
+            className="surface-tight p-3 text-sm transition-transform hover:-translate-y-0.5"
           >
             <div className="flex items-baseline gap-2">
               <span className="font-medium">{c.name}</span>
@@ -533,7 +621,7 @@ function SubplotsTab({ novelId }: { novelId: string }) {
       {data.map((s) => (
         <li
           key={s.id}
-          className="rounded border border-neutral-200 bg-white p-3 text-sm"
+          className="surface-tight p-3 text-sm"
         >
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className="font-medium">{s.name}</span>
@@ -618,7 +706,7 @@ function HooksTab({ novelId }: { novelId: string }) {
         return (
           <li
             key={h.id}
-            className="rounded border border-neutral-200 bg-white p-3 text-sm flex items-start gap-3"
+            className="surface-tight flex items-start gap-3 p-3 text-sm"
           >
             <div className="flex flex-col gap-1 shrink-0 mt-0.5">
               {cat && (
@@ -700,72 +788,83 @@ function ContinueAnalysisBar({
     onError: (e: Error) => setErr(e.message),
   })
   const busy = cont.isPending || reagg.isPending
+  const reaggregateButton = (
+    <button
+      onClick={async () => {
+        const ok = await confirm({
+          title: '重新聚合',
+          confirmLabel: '开始',
+          message: (
+            <div className="space-y-2">
+              <p>用已有章节数据重新聚合人物 / 支线 / 钩子？</p>
+              <p className="text-neutral-600">
+                不会重新读取章节原文，只会基于已抽取的摘要 / 事件 / 钩子候选：
+              </p>
+              <ul className="list-disc list-inside space-y-0.5 text-neutral-600">
+                <li>人物卡：合并别名、过滤工具人、重写描述</li>
+                <li>支线：重新识别 3-10 条主支线</li>
+                <li>钩子：重新过滤 / 去重 / 匹配回收</li>
+              </ul>
+              <p className="text-neutral-500 text-xs">
+                适合调整聚合规则后复验，正常分析完成后通常不用再点。
+              </p>
+            </div>
+          ),
+        })
+        if (ok) reagg.mutate()
+      }}
+      disabled={busy}
+      title={
+        '不重新读取章节原文，只用已抽取的数据重建人物、支线和钩子。调整聚合规则或对结果不满意时用，正常分析完成后通常不需要。'
+      }
+      className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-50"
+    >
+      {reagg.isPending ? '聚合中…' : '仅重聚合'}
+    </button>
+  )
+
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-4 flex items-center flex-wrap gap-3 text-sm">
-      <span className={cn('text-neutral-600', !canContinue && 'opacity-40')}>
-        继续分析
-      </span>
-      <input
-        type="number"
-        min={1}
-        value={more}
-        disabled={!canContinue}
-        onChange={(e) => setMore(Math.max(1, Number(e.target.value) || 1))}
-        className="w-20 text-sm border border-neutral-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-40"
-      />
-      <span className={cn('text-neutral-600', !canContinue && 'opacity-40')}>章</span>
-      <button
-        onClick={() => cont.mutate()}
-        disabled={busy || !canContinue}
-        title={
-          !canContinue
-            ? '所有章节已分析完毕'
-            : '对未分析过的章节调用 LLM 抽取摘要/人物/事件/钩子候选，然后重新聚合人物、支线、钩子。消耗 LLM token。'
-        }
-        className="inline-flex items-center justify-center rounded bg-neutral-900 text-white text-sm px-3 py-1.5 disabled:opacity-50"
-      >
-        {cont.isPending ? '启动中…' : '开始'}
-      </button>
-      <span className="mx-1 h-4 w-px bg-neutral-200" aria-hidden />
-      <button
-        onClick={async () => {
-          const ok = await confirm({
-            title: '重新聚合',
-            confirmLabel: '开始',
-            message: (
-              <div className="space-y-2">
-                <p>用已有章节数据重新聚合人物 / 支线 / 钩子？</p>
-                <p className="text-neutral-600">
-                  不会重新读取章节原文，只会基于已抽取的摘要 / 事件 / 钩子候选：
-                </p>
-                <ul className="list-disc list-inside space-y-0.5 text-neutral-600">
-                  <li>人物卡：合并别名、过滤工具人、重写描述</li>
-                  <li>支线：重新识别 3-10 条主支线</li>
-                  <li>钩子：重新过滤 / 去重 / 匹配回收</li>
-                </ul>
-                <p className="text-neutral-500 text-xs">
-                  速度快、不消耗每章抽取 token。适合调整聚合规则后复验。
-                </p>
-              </div>
-            ),
-          })
-          if (ok) reagg.mutate()
-        }}
-        disabled={busy}
-        title={
-          '不重新读取章节原文，只用已抽取的数据重建：\n• 人物卡（合并别名、过滤工具人）\n• 支线（重新识别）\n• 钩子（过滤/去重/回收匹配）\n\n调整了聚合规则或对结果不满意时用。速度快、不消耗每章抽取的 token。'
-        }
-        className="inline-flex items-center justify-center rounded border border-neutral-300 bg-white text-neutral-700 text-sm px-3 py-1.5 hover:bg-neutral-50 disabled:opacity-50"
-      >
-        {reagg.isPending ? '聚合中…' : '仅重聚合'}
-      </button>
+    <div className="surface flex flex-wrap items-center gap-3 p-4 text-sm">
+      {canContinue ? (
+        <>
+          <span className="text-neutral-600">继续分析</span>
+          <input
+            type="number"
+            min={1}
+            value={more}
+            onChange={(e) => setMore(Math.max(1, Number(e.target.value) || 1))}
+            className="w-20 rounded-md border border-[var(--line-strong)] bg-[rgba(255,255,252,0.78)] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8d7bc]"
+          />
+          <span className="text-neutral-600">章</span>
+          <button
+            onClick={() => cont.mutate()}
+            disabled={busy}
+            title="对未分析过的章节调用 LLM 抽取摘要/人物/事件/钩子候选，然后重新聚合人物、支线、钩子。消耗 LLM token。"
+            className="btn-primary px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            {cont.isPending ? '启动中…' : '开始'}
+          </button>
+        </>
+      ) : (
+        <span className="text-neutral-600">所有章节已分析完毕</span>
+      )}
+      <details className="basis-full">
+        <summary className="w-fit cursor-pointer select-none text-xs text-neutral-500 hover:text-neutral-800">
+          高级操作
+        </summary>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          {reaggregateButton}
+          <span className="text-xs text-neutral-400">
+            只重算人物 / 支线 / 钩子，适合改过聚合规则后复验。
+          </span>
+        </div>
+      </details>
       {err && <span className="text-rose-600 text-xs">{err}</span>}
-      <p className="basis-full text-xs text-neutral-400 mt-1 leading-relaxed">
-        <span className="text-neutral-500">继续分析</span>：扫描新章节并重建全部结果（读章节 +
-        聚合，耗 token）
-        <span className="mx-2">·</span>
-        <span className="text-neutral-500">仅重聚合</span>：只用已抽好的数据重算人物/支线/钩子（不读章节、几乎不耗 token）
-      </p>
+      {canContinue && (
+        <p className="basis-full text-xs text-neutral-400 mt-1 leading-relaxed">
+          继续分析会扫描新章节并重建全部结果，需要读取章节并消耗 LLM token。
+        </p>
+      )}
     </div>
   )
 }

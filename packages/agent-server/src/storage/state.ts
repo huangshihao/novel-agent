@@ -16,9 +16,7 @@ export async function writeState(novelId: string, rec: StateRecord): Promise<voi
   await writeMd(paths.targetState(novelId), rec as unknown as Record<string, unknown>, '')
 }
 
-export async function initStateIfMissing(novelId: string): Promise<StateRecord> {
-  const existing = await readState(novelId)
-  if (existing) return existing
+export async function createInitialState(novelId: string): Promise<StateRecord> {
   const maps = await readMaps(novelId)
   const sourceHooks = await readSourceHooks(novelId)
   const alive_status: Record<string, AliveStatus> = {}
@@ -29,7 +27,13 @@ export async function initStateIfMissing(novelId: string): Promise<StateRecord> 
   for (const h of sourceHooks) {
     hooks[h.id] = { status: 'open' }
   }
-  const init: StateRecord = { alive_status, hooks, new_hooks: [] }
+  return { alive_status, hooks, new_hooks: [] }
+}
+
+export async function initStateIfMissing(novelId: string): Promise<StateRecord> {
+  const existing = await readState(novelId)
+  if (existing) return existing
+  const init = await createInitialState(novelId)
   await writeState(novelId, init)
   return init
 }
@@ -70,11 +74,13 @@ export async function applyChapterStateDiff(
   for (const id of outline.hooks_to_plant) {
     if (cur.hooks[id]) continue
     if (cur.new_hooks.some((x) => x.id === id)) continue
+    const plan = outline.hook_plans?.find((x) => x.id === id)
     cur.new_hooks.push({
       id,
-      description: '',
+      description: plan?.description ?? '',
       planted_chapter: chapterNumber,
-      expected_payoff_chapter: null,
+      expected_payoff_chapter: plan?.expected_payoff_chapter ?? null,
+      ...(plan ? { type: plan.type, payoff_plan: plan.payoff_plan } : {}),
       status: 'open',
     })
   }
