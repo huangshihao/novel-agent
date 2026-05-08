@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { OutlineRecord } from '@novel-agent/shared'
 import {
   buildOutlineEvaluationPrompt,
+  chooseDefaultOutlineEvaluationNumbers,
   chooseDefaultOutlineEvaluationRange,
   MAX_OUTLINE_EVALUATION_CHAPTERS,
+  validateOutlineEvaluationNumbers,
 } from './outline-evaluator.js'
 
 function outline(number: number): OutlineRecord {
@@ -29,6 +31,7 @@ describe('outline evaluator', () => {
     const outlines = Array.from({ length: 30 }, (_, i) => outline(i + 1))
 
     expect(chooseDefaultOutlineEvaluationRange(outlines)).toEqual({ from: 1, to: 10 })
+    expect(chooseDefaultOutlineEvaluationNumbers(outlines)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
   })
 
   it('单次评估上限为 20 章', () => {
@@ -44,7 +47,7 @@ describe('outline evaluator', () => {
     })
 
     expect(prompt).toContain('番茄小说')
-    expect(prompt).toContain('第 2-3 章')
+    expect(prompt).toContain('第 2、3 章')
     expect(prompt).toContain('第 2 章新大纲剧情')
     expect(prompt).toContain('第 3 章新大纲剧情')
   })
@@ -73,5 +76,25 @@ describe('outline evaluator', () => {
     expect(prompt).toContain('总字数控制在 800 字以内')
     expect(prompt).toContain('只列最关键的 3-5 条修改建议')
     expect(prompt).not.toContain('逐章修改意见')
+  })
+
+  it('支持非连续章节选择', () => {
+    const outlines = [outline(11), outline(12), outline(13)]
+    const checked = validateOutlineEvaluationNumbers([13, 11], outlines)
+
+    expect(checked).toEqual({ ok: true, selected: [outline(11), outline(13)] })
+
+    const prompt = buildOutlineEvaluationPrompt({
+      novelTitle: '测试小说',
+      from: 11,
+      to: 13,
+      chapterNumbers: [11, 13],
+      outlines: [outline(11), outline(13)],
+    })
+
+    expect(prompt).toContain('第 11、13 章大纲')
+    expect(prompt).toContain('第 11 章新大纲剧情')
+    expect(prompt).not.toContain('第 12 章新大纲剧情')
+    expect(prompt).toContain('第 13 章新大纲剧情')
   })
 })

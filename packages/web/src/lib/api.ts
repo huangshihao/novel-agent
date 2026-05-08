@@ -76,11 +76,11 @@ export const api = {
     fetch(`/api/novel/${id}/outlines`).then(j<OutlineRecord[]>),
   getOutline: (id: string, n: number) =>
     fetch(`/api/novel/${id}/outlines/${n}`).then(j<OutlineRecord>),
-  evaluateOutlines: (id: string, from: number, to: number) =>
+  evaluateOutlines: (id: string, numbers: number[]) =>
     fetch(`/api/novel/${id}/outlines/evaluate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to }),
+      body: JSON.stringify({ numbers }),
     }).then(j<OutlineEvaluationResponse>),
   deleteOutlinesFrom: (id: string, n: number) =>
     fetch(`/api/novel/${id}/outlines/${n}`, { method: 'DELETE' }).then(

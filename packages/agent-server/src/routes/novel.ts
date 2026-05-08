@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { randomUUID } from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import type { AnalysisEvent } from '@novel-agent/shared'
+import { DeepSeekError } from '../deepseek-client.js'
 import { splitChapters } from '../chapter-splitter.js'
 import { startAnalysis, reaggregate } from '../analyzer.js'
 import { getBus } from '../event-bus.js'
@@ -28,6 +29,7 @@ import {
 import {
   evaluateOutlines,
   validateOutlineEvaluationRange,
+  validateOutlineEvaluationNumbers,
 } from '../outline-evaluator.js'
 import { deleteDraftsFrom, deleteOutlinesFrom } from '../storage/target-delete.js'
 import { readState } from '../storage/state.js'
@@ -263,24 +265,34 @@ app.post('/:id/outlines/evaluate', async (c) => {
   const novel = await readNovelIndex(id)
   if (!novel) return c.json({ error: 'not_found' }, 404)
 
-  const body: { from?: number; to?: number } = await c.req
-    .json<{ from?: number; to?: number }>()
+  const body: { from?: number; to?: number; numbers?: number[] } = await c.req
+    .json<{ from?: number; to?: number; numbers?: number[] }>()
     .catch(() => ({}))
-  const from = Number(body.from)
-  const to = Number(body.to)
   const outlines = await listOutlines(id)
-  const checked = validateOutlineEvaluationRange(from, to, outlines)
+  const checked = Array.isArray(body.numbers)
+    ? validateOutlineEvaluationNumbers(body.numbers.map(Number), outlines)
+    : validateOutlineEvaluationRange(Number(body.from), Number(body.to), outlines)
   if (!checked.ok) {
     return c.json({ error: 'invalid_range', message: checked.message }, 400)
   }
+  const numbers = checked.selected.map((outline) => outline.number)
+  const from = numbers[0]!
+  const to = numbers[numbers.length - 1]!
 
-  const result = await evaluateOutlines({
-    novelTitle: novel.title,
-    from,
-    to,
-    outlines: checked.selected,
-  })
-  return c.json(result)
+  try {
+    const result = await evaluateOutlines({
+      novelTitle: novel.title,
+      from,
+      to,
+      chapterNumbers: numbers,
+      outlines: checked.selected,
+    })
+    return c.json(result)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '评估失败'
+    const body = err instanceof DeepSeekError ? err.body : undefined
+    return c.json({ error: 'llm_error', message, body }, 502)
+  }
 })
 
 app.get('/:id/outlines/:n', async (c) => {

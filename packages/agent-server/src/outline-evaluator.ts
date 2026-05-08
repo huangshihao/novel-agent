@@ -12,6 +12,7 @@ export interface OutlineEvaluationPromptInput {
   novelTitle: string
   from: number
   to: number
+  chapterNumbers?: number[]
   outlines: OutlineRecord[]
 }
 
@@ -25,6 +26,42 @@ export function chooseDefaultOutlineEvaluationRange(
   return { from, to: Math.min(from + DEFAULT_OUTLINE_EVALUATION_SPAN - 1, last) }
 }
 
+export function chooseDefaultOutlineEvaluationNumbers(outlines: OutlineRecord[]): number[] {
+  return [...outlines]
+    .map((outline) => outline.number)
+    .sort((a, b) => a - b)
+    .slice(0, DEFAULT_OUTLINE_EVALUATION_SPAN)
+}
+
+export function validateOutlineEvaluationNumbers(
+  numbers: number[],
+  outlines: OutlineRecord[],
+): { ok: true; selected: OutlineRecord[] } | { ok: false; message: string } {
+  const selectedNumbers = [...new Set(numbers)].sort((a, b) => a - b)
+  if (selectedNumbers.length === 0) {
+    return { ok: false, message: '请至少选择 1 章大纲' }
+  }
+  if (selectedNumbers.length > MAX_OUTLINE_EVALUATION_CHAPTERS) {
+    return { ok: false, message: `单次最多评估 ${MAX_OUTLINE_EVALUATION_CHAPTERS} 章` }
+  }
+  if (selectedNumbers.some((number) => !Number.isInteger(number) || number < 1)) {
+    return { ok: false, message: '评估章节选择无效' }
+  }
+
+  const byNumber = new Map(outlines.map((outline) => [outline.number, outline]))
+  const selected: OutlineRecord[] = []
+  const missing: number[] = []
+  for (const number of selectedNumbers) {
+    const outline = byNumber.get(number)
+    if (outline) selected.push(outline)
+    else missing.push(number)
+  }
+  if (missing.length > 0) {
+    return { ok: false, message: `缺少第 ${missing.join(', ')} 章大纲` }
+  }
+  return { ok: true, selected }
+}
+
 export function validateOutlineEvaluationRange(
   from: number,
   to: number,
@@ -36,29 +73,21 @@ export function validateOutlineEvaluationRange(
   if (to - from + 1 > MAX_OUTLINE_EVALUATION_CHAPTERS) {
     return { ok: false, message: `单次最多评估 ${MAX_OUTLINE_EVALUATION_CHAPTERS} 章` }
   }
-  const byNumber = new Map(outlines.map((outline) => [outline.number, outline]))
-  const selected: OutlineRecord[] = []
-  const missing: number[] = []
-  for (let number = from; number <= to; number++) {
-    const outline = byNumber.get(number)
-    if (outline) selected.push(outline)
-    else missing.push(number)
-  }
-  if (missing.length > 0) {
-    return { ok: false, message: `缺少第 ${missing.join(', ')} 章大纲` }
-  }
-  return { ok: true, selected }
+  const numbers = Array.from({ length: to - from + 1 }, (_, index) => from + index)
+  return validateOutlineEvaluationNumbers(numbers, outlines)
 }
 
 export function buildOutlineEvaluationPrompt(input: OutlineEvaluationPromptInput): string {
   const outlineText = input.outlines
     .map((outline) => formatOutlineForPrompt(outline))
     .join('\n\n')
-  const standards = buildEvaluationStandards(input.from, input.to)
+  const chapterNumbers = normalizePromptChapterNumbers(input)
+  const standards = buildEvaluationStandards(chapterNumbers)
+  const chapterLabel = formatChapterSelection(chapterNumbers)
 
   return `你是番茄小说资深网文编辑，按番茄小说商业连载标准评估用户生成的新书大纲。
 
-评估对象：《${input.novelTitle}》第 ${input.from}-${input.to} 章大纲。
+评估对象：《${input.novelTitle}》${chapterLabel}大纲。
 
 评估标准：
 ${standards}
@@ -76,9 +105,20 @@ ${standards}
 ${outlineText}`
 }
 
-function buildEvaluationStandards(from: number, to: number): string {
-  const includesOpening = from <= 3
-  const hasLaterChapters = to > 3
+function normalizePromptChapterNumbers(input: OutlineEvaluationPromptInput): number[] {
+  const numbers = input.chapterNumbers?.length
+    ? input.chapterNumbers
+    : input.outlines.map((outline) => outline.number)
+  return [...new Set(numbers)].sort((a, b) => a - b)
+}
+
+export function formatChapterSelection(numbers: number[]): string {
+  return `第 ${numbers.join('、')} 章`
+}
+
+function buildEvaluationStandards(numbers: number[]): string {
+  const includesOpening = numbers.some((number) => number <= 3)
+  const hasLaterChapters = numbers.some((number) => number > 3)
   if (includesOpening && !hasLaterChapters) return openingStandards()
   if (!includesOpening) return serialStageStandards()
   return mixedRangeStandards()
@@ -123,12 +163,14 @@ export async function evaluateOutlinesWithClient(
   model: string,
 ): Promise<OutlineEvaluationResponse> {
   const report = await client.chat(buildOutlineEvaluationPrompt(input), { temperature: 0.2 })
+  const numbers = normalizePromptChapterNumbers(input)
   return {
-    from: input.from,
-    to: input.to,
+    from: numbers[0] ?? input.from,
+    to: numbers[numbers.length - 1] ?? input.to,
+    numbers,
     model,
     report: report.trim(),
-    suggestionMessage: buildSuggestionMessage(input.from, input.to, report),
+    suggestionMessage: buildSuggestionMessage(numbers, report),
     evaluatedAt: new Date().toISOString(),
   }
 }
@@ -140,11 +182,12 @@ export async function evaluateOutlines(
   return evaluateOutlinesWithClient(input, client, model)
 }
 
-function buildSuggestionMessage(from: number, to: number, report: string): string {
-  return `请根据下面这份番茄小说网文标准评估报告，修改第 ${from}-${to} 章已生成的大纲。
+function buildSuggestionMessage(numbers: number[], report: string): string {
+  const chapterLabel = formatChapterSelection(numbers)
+  return `请根据下面这份番茄小说网文标准评估报告，修改${chapterLabel}已生成的大纲。
 
 要求：
-1. 只修改第 ${from}-${to} 章大纲，不改无关章节。
+1. 只修改${chapterLabel}大纲，不改无关章节。
 2. 保留已有角色/设定映射，除非报告明确指出必须补充 maps。
 3. 每章修改前先调用 getOutlineContext({number}) 查看现有大纲和上下文，再用 writeChapterOutline 覆盖对应章节。
 4. 优先解决报告中“优先级最高的 5 条改法”，同时保持 plot_functions 不丢失。

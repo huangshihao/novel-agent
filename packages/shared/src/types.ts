@@ -345,13 +345,15 @@ export interface OutlineRecord {
 }
 
 export interface OutlineEvaluationRequest {
-  from: number
-  to: number
+  from?: number
+  to?: number
+  numbers?: number[]
 }
 
 export interface OutlineEvaluationResponse {
   from: number
   to: number
+  numbers: number[]
   model: string
   report: string
   suggestionMessage: string

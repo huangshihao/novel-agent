@@ -39,19 +39,13 @@ export function OutlinePanel({ novelId, onSendToAgent }: Props) {
     [outlines],
   )
   const outlineNumbersKey = outlineNumbers.join(',')
-  const firstOutline = outlineNumbers[0] ?? 1
-  const lastOutline = outlineNumbers[outlineNumbers.length - 1] ?? 1
-  const [evalFrom, setEvalFrom] = useState(firstOutline)
-  const [evalTo, setEvalTo] = useState(firstOutline)
+  const [selectedEvaluationNumbers, setSelectedEvaluationNumbers] = useState<number[]>([])
   const [sentMessageId, setSentMessageId] = useState<string | null>(null)
   const [editableReport, setEditableReport] = useState('')
 
   useEffect(() => {
     if (outlineNumbers.length === 0) return
-    const from = outlineNumbers[0]!
-    const last = outlineNumbers[outlineNumbers.length - 1]!
-    setEvalFrom(from)
-    setEvalTo(Math.min(from + DEFAULT_EVALUATION_SPAN - 1, last))
+    setSelectedEvaluationNumbers(outlineNumbers.slice(0, DEFAULT_EVALUATION_SPAN))
   }, [outlineNumbersKey])
 
   const deleteMut = useMutation({
@@ -66,20 +60,29 @@ export function OutlinePanel({ novelId, onSendToAgent }: Props) {
     },
   })
   const evaluateMut = useMutation({
-    mutationFn: () => api.evaluateOutlines(novelId, evalFrom, evalTo),
+    mutationFn: () => api.evaluateOutlines(novelId, selectedEvaluationNumbers),
     onSuccess: (data) => {
       setEditableReport(data.report)
       setSentMessageId(null)
     },
   })
 
-  const selectedCount = Math.max(0, evalTo - evalFrom + 1)
-  const rangeInvalid =
-    outlineNumbers.length === 0 ||
-    evalFrom < firstOutline ||
-    evalTo > lastOutline ||
-    evalTo < evalFrom ||
-    selectedCount > MAX_EVALUATION_SPAN
+  const selectedEvaluationSet = useMemo(
+    () => new Set(selectedEvaluationNumbers),
+    [selectedEvaluationNumbers],
+  )
+  const evaluationSelectionInvalid =
+    selectedEvaluationNumbers.length === 0 ||
+    selectedEvaluationNumbers.length > MAX_EVALUATION_SPAN
+
+  const toggleEvaluationNumber = (number: number) => {
+    setSelectedEvaluationNumbers((prev) => {
+      if (prev.includes(number)) return prev.filter((item) => item !== number)
+      if (prev.length >= MAX_EVALUATION_SPAN) return prev
+      return [...prev, number].sort((a, b) => a - b)
+    })
+    setSentMessageId(null)
+  }
 
   const onDelete = async (number: number) => {
     const ok = await confirm({
@@ -97,43 +100,21 @@ export function OutlinePanel({ novelId, onSendToAgent }: Props) {
         <div className="border-b border-[var(--line)] p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <h3 className="text-sm font-medium text-[var(--ink)]">大纲评估</h3>
-            <span className="text-[11px] text-neutral-500">最多 {MAX_EVALUATION_SPAN} 章</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="text-[11px] text-neutral-500">
-              起始章
-              <input
-                type="number"
-                min={firstOutline}
-                max={lastOutline}
-                value={evalFrom}
-                onChange={(e) => setEvalFrom(Number(e.target.value))}
-                className="mt-1 h-8 w-full rounded-md border border-[var(--line-strong)] bg-[rgba(255,255,252,0.86)] px-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--ink)]"
-              />
-            </label>
-            <label className="text-[11px] text-neutral-500">
-              结束章
-              <input
-                type="number"
-                min={firstOutline}
-                max={lastOutline}
-                value={evalTo}
-                onChange={(e) => setEvalTo(Number(e.target.value))}
-                className="mt-1 h-8 w-full rounded-md border border-[var(--line-strong)] bg-[rgba(255,255,252,0.86)] px-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--ink)]"
-              />
-            </label>
+            <span className="text-[11px] text-neutral-500">
+              {selectedEvaluationNumbers.length}/{MAX_EVALUATION_SPAN} 章
+            </span>
           </div>
           <button
             type="button"
             onClick={() => evaluateMut.mutate()}
-            disabled={rangeInvalid || evaluateMut.isPending}
+            disabled={evaluationSelectionInvalid || evaluateMut.isPending}
             className="btn-secondary mt-3 h-8 w-full text-sm disabled:opacity-50"
           >
             {evaluateMut.isPending ? '评估中...' : '按番茄标准评估'}
           </button>
-          {rangeInvalid && outlineNumbers.length > 0 && (
+          {evaluationSelectionInvalid && outlineNumbers.length > 0 && (
             <p className="mt-2 text-[11px] leading-relaxed text-red-700">
-              范围必须在第 {firstOutline}-{lastOutline} 章内，且不超过 {MAX_EVALUATION_SPAN} 章。
+              请选择 1-{MAX_EVALUATION_SPAN} 章进行评估。
             </p>
           )}
           {evaluateMut.error && (
@@ -148,36 +129,50 @@ export function OutlinePanel({ novelId, onSendToAgent }: Props) {
               还没有大纲。在右侧启动大纲 agent 生成。
             </li>
           )}
-          {outlines?.map((o) => (
-            <li
-              key={o.number}
-              className={clsx(
-                'group border-b border-[var(--line)]',
-                selected === o.number
-                  ? 'bg-[rgba(242,223,201,0.68)] shadow-[inset_3px_0_0_var(--accent)]'
-                  : 'hover:bg-[rgba(255,255,252,0.62)]',
-              )}
-            >
-              <div className="flex items-center gap-1 pr-2">
-                <button
-                  onClick={() => setSelected(o.number)}
-                  className="min-w-0 flex-1 px-3 py-2 text-left text-sm"
-                >
-                  第 {o.number} 章
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void onDelete(o.number)}
-                  disabled={deleteMut.isPending}
-                  title="删除"
-                  aria-label={`删除第 ${o.number} 章及之后大纲`}
-                  className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-neutral-400 opacity-0 transition-[opacity,color,background-color] hover:bg-red-50 hover:text-red-700 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 group-hover:opacity-100 disabled:opacity-40"
-                >
-                  <TrashIcon />
-                </button>
-              </div>
-            </li>
-          ))}
+          {outlines?.map((o) => {
+            const checked = selectedEvaluationSet.has(o.number)
+            const disabled = !checked && selectedEvaluationNumbers.length >= MAX_EVALUATION_SPAN
+            return (
+              <li
+                key={o.number}
+                className={clsx(
+                  'group border-b border-[var(--line)]',
+                  selected === o.number
+                    ? 'bg-[rgba(242,223,201,0.68)] shadow-[inset_3px_0_0_var(--accent)]'
+                    : 'hover:bg-[rgba(255,255,252,0.62)]',
+                )}
+              >
+                <div className="flex items-center gap-1 pr-2">
+                  <label className="grid h-9 w-9 shrink-0 place-items-center pl-2">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={() => toggleEvaluationNumber(o.number)}
+                      aria-label={`选择第 ${o.number} 章参与评估`}
+                      className="h-4 w-4 accent-[var(--accent)] disabled:opacity-40"
+                    />
+                  </label>
+                  <button
+                    onClick={() => setSelected(o.number)}
+                    className="min-w-0 flex-1 px-3 py-2 text-left text-sm"
+                  >
+                    第 {o.number} 章
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void onDelete(o.number)}
+                    disabled={deleteMut.isPending}
+                    title="删除"
+                    aria-label={`删除第 ${o.number} 章及之后大纲`}
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-neutral-400 opacity-0 transition-[opacity,color,background-color] hover:bg-red-50 hover:text-red-700 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 group-hover:opacity-100 disabled:opacity-40"
+                  >
+                    <TrashIcon />
+                  </button>
+                </div>
+              </li>
+            )
+          })}
         </ul>
       </aside>
 
@@ -186,7 +181,7 @@ export function OutlinePanel({ novelId, onSendToAgent }: Props) {
           <article className="surface-tight mb-5 space-y-4 p-5 text-sm">
             <header className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold">第 {evaluateMut.data.from}-{evaluateMut.data.to} 章评估报告</h2>
+                <h2 className="text-lg font-semibold">{formatChapterSelection(evaluateMut.data.numbers)}评估报告</h2>
                 <p className="mt-1 text-xs text-neutral-500">模型：{evaluateMut.data.model}</p>
               </div>
               <button
@@ -194,8 +189,7 @@ export function OutlinePanel({ novelId, onSendToAgent }: Props) {
                 onClick={() => {
                   onSendToAgent?.(
                     buildOutlineRevisionMessage(
-                      evaluateMut.data.from,
-                      evaluateMut.data.to,
+                      evaluateMut.data.numbers,
                       editableReport,
                     ),
                   )
@@ -312,15 +306,20 @@ function OutlineDetail({ novelId, number }: { novelId: string; number: number })
   )
 }
 
-function buildOutlineRevisionMessage(from: number, to: number, report: string): string {
-  return `请根据下面这份我已经 review 和修改过的评估意见，修改第 ${from}-${to} 章已生成的大纲。
+function buildOutlineRevisionMessage(numbers: number[], report: string): string {
+  const chapterLabel = formatChapterSelection(numbers)
+  return `请根据下面这份我已经 review 和修改过的评估意见，修改${chapterLabel}已生成的大纲。
 
 要求：
-1. 只修改第 ${from}-${to} 章大纲，不改无关章节。
+1. 只修改${chapterLabel}大纲，不改无关章节。
 2. 保留已有角色/设定映射，除非评估意见明确指出必须补充 maps。
 3. 每章修改前先调用 getOutlineContext({number}) 查看现有大纲和上下文，再用 writeChapterOutline 覆盖对应章节。
 4. 优先落实评估意见里的具体修改建议，同时保持 plot_functions 不丢失。
 
 评估意见：
 ${report.trim()}`
+}
+
+function formatChapterSelection(numbers: number[]): string {
+  return `第 ${numbers.join('、')} 章`
 }
