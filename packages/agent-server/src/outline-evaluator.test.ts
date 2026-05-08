@@ -35,7 +35,7 @@ describe('outline evaluator', () => {
     expect(MAX_OUTLINE_EVALUATION_CHAPTERS).toBe(20)
   })
 
-  it('提示词包含番茄评估标准和可转发给 agent 的修改意见要求', () => {
+  it('提示词包含番茄评估标准和目标大纲内容', () => {
     const prompt = buildOutlineEvaluationPrompt({
       novelTitle: '测试小说',
       from: 2,
@@ -45,7 +45,6 @@ describe('outline evaluator', () => {
 
     expect(prompt).toContain('番茄小说')
     expect(prompt).toContain('第 2-3 章')
-    expect(prompt).toContain('可直接发给写作 agent')
     expect(prompt).toContain('第 2 章新大纲剧情')
     expect(prompt).toContain('第 3 章新大纲剧情')
   })
@@ -61,5 +60,18 @@ describe('outline evaluator', () => {
     expect(prompt).not.toContain('黄金三章：主角出场速度')
     expect(prompt).toContain('阶段连载标准')
     expect(prompt).toContain('阶段目标是否明确')
+  })
+
+  it('要求模型输出短评估而不是冗长逐章报告', () => {
+    const prompt = buildOutlineEvaluationPrompt({
+      novelTitle: '测试小说',
+      from: 11,
+      to: 20,
+      outlines: Array.from({ length: 10 }, (_, i) => outline(i + 11)),
+    })
+
+    expect(prompt).toContain('总字数控制在 800 字以内')
+    expect(prompt).toContain('只列最关键的 3-5 条修改建议')
+    expect(prompt).not.toContain('逐章修改意见')
   })
 })

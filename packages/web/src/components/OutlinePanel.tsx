@@ -44,6 +44,7 @@ export function OutlinePanel({ novelId, onSendToAgent }: Props) {
   const [evalFrom, setEvalFrom] = useState(firstOutline)
   const [evalTo, setEvalTo] = useState(firstOutline)
   const [sentMessageId, setSentMessageId] = useState<string | null>(null)
+  const [editableReport, setEditableReport] = useState('')
 
   useEffect(() => {
     if (outlineNumbers.length === 0) return
@@ -66,7 +67,10 @@ export function OutlinePanel({ novelId, onSendToAgent }: Props) {
   })
   const evaluateMut = useMutation({
     mutationFn: () => api.evaluateOutlines(novelId, evalFrom, evalTo),
-    onSuccess: () => setSentMessageId(null),
+    onSuccess: (data) => {
+      setEditableReport(data.report)
+      setSentMessageId(null)
+    },
   })
 
   const selectedCount = Math.max(0, evalTo - evalFrom + 1)
@@ -188,18 +192,33 @@ export function OutlinePanel({ novelId, onSendToAgent }: Props) {
               <button
                 type="button"
                 onClick={() => {
-                  onSendToAgent?.(evaluateMut.data.suggestionMessage)
+                  onSendToAgent?.(
+                    buildOutlineRevisionMessage(
+                      evaluateMut.data.from,
+                      evaluateMut.data.to,
+                      editableReport,
+                    ),
+                  )
                   setSentMessageId(evaluateMut.data.evaluatedAt)
                 }}
-                disabled={!onSendToAgent}
+                disabled={!onSendToAgent || !editableReport.trim()}
                 className="btn-primary h-9 px-3 text-sm disabled:opacity-50"
               >
                 {sentMessageId === evaluateMut.data.evaluatedAt ? '已发送' : '发送给 agent 修改'}
               </button>
             </header>
-            <div className="max-w-none whitespace-pre-wrap rounded-md border border-[var(--line)] bg-[rgba(255,255,252,0.72)] p-4 text-sm leading-7 text-neutral-800">
-              {evaluateMut.data.report}
-            </div>
+            <label className="block">
+              <span className="mb-2 block text-xs text-neutral-500">可编辑评估意见</span>
+              <textarea
+                value={editableReport}
+                onChange={(e) => {
+                  setEditableReport(e.target.value)
+                  setSentMessageId(null)
+                }}
+                rows={16}
+                className="min-h-[360px] w-full resize-y rounded-md border border-[var(--line)] bg-[rgba(255,255,252,0.72)] p-4 text-sm leading-7 text-neutral-800 outline-none focus:border-[var(--ink)]"
+              />
+            </label>
           </article>
         )}
         {selected == null && !evaluateMut.data && <p className="text-sm text-neutral-400">选一章查看大纲</p>}
@@ -291,4 +310,17 @@ function OutlineDetail({ novelId, number }: { novelId: string; number: number })
       )}
     </article>
   )
+}
+
+function buildOutlineRevisionMessage(from: number, to: number, report: string): string {
+  return `请根据下面这份我已经 review 和修改过的评估意见，修改第 ${from}-${to} 章已生成的大纲。
+
+要求：
+1. 只修改第 ${from}-${to} 章大纲，不改无关章节。
+2. 保留已有角色/设定映射，除非评估意见明确指出必须补充 maps。
+3. 每章修改前先调用 getOutlineContext({number}) 查看现有大纲和上下文，再用 writeChapterOutline 覆盖对应章节。
+4. 优先落实评估意见里的具体修改建议，同时保持 plot_functions 不丢失。
+
+评估意见：
+${report.trim()}`
 }
